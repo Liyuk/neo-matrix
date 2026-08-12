@@ -1,7 +1,7 @@
 package baidu
 
 import (
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 	"time"
 )
 

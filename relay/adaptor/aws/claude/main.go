@@ -14,14 +14,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
-	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/ctxkey"
-	"github.com/songquanpeng/one-api/common/helper"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
-	"github.com/songquanpeng/one-api/relay/adaptor/aws/utils"
-	"github.com/songquanpeng/one-api/relay/adaptor/openai"
-	relaymodel "github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common"
+	"github.com/neo-matrix/neo-matrix/common/ctxkey"
+	"github.com/neo-matrix/neo-matrix/common/helper"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/anthropic"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/aws/utils"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/openai"
+	relaymodel "github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 // https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html

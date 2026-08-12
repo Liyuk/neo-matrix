@@ -2,7 +2,7 @@ package ratio
 
 import (
 	"encoding/json"
-	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/neo-matrix/neo-matrix/common/logger"
 	"sync"
 )
 

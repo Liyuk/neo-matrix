@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/songquanpeng/one-api/common/env"
+	"github.com/neo-matrix/neo-matrix/common/env"
 
 	"github.com/google/uuid"
 )
 
-var SystemName = "One API"
+var SystemName = "Neo Matrix"
 var ServerAddress = "http://localhost:3000"
 var Footer = ""
 var Logo = ""

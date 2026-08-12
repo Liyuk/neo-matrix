@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/utils"
+	"github.com/neo-matrix/neo-matrix/common"
+	"github.com/neo-matrix/neo-matrix/common/utils"
 )
 
 type Ability struct {

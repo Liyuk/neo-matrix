@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/helper"
-	channelhelper "github.com/songquanpeng/one-api/relay/adaptor"
-	"github.com/songquanpeng/one-api/relay/adaptor/openai"
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/model"
-	"github.com/songquanpeng/one-api/relay/relaymode"
+	"github.com/neo-matrix/neo-matrix/common/config"
+	"github.com/neo-matrix/neo-matrix/common/helper"
+	channelhelper "github.com/neo-matrix/neo-matrix/relay/adaptor"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/openai"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/model"
+	"github.com/neo-matrix/neo-matrix/relay/relaymode"
 )
 
 type Adaptor struct {

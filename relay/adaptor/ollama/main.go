@@ -5,21 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/songquanpeng/one-api/common/render"
+	"github.com/neo-matrix/neo-matrix/common/render"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/songquanpeng/one-api/common/helper"
-	"github.com/songquanpeng/one-api/common/random"
+	"github.com/neo-matrix/neo-matrix/common/helper"
+	"github.com/neo-matrix/neo-matrix/common/random"
 
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/image"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/relay/adaptor/openai"
-	"github.com/songquanpeng/one-api/relay/constant"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common"
+	"github.com/neo-matrix/neo-matrix/common/image"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/openai"
+	"github.com/neo-matrix/neo-matrix/relay/constant"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {

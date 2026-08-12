@@ -9,17 +9,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/songquanpeng/one-api/common/client"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/model"
-	"github.com/songquanpeng/one-api/monitor"
-	"github.com/songquanpeng/one-api/relay/channeltype"
+	"github.com/neo-matrix/neo-matrix/common/client"
+	"github.com/neo-matrix/neo-matrix/common/config"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/model"
+	"github.com/neo-matrix/neo-matrix/monitor"
+	"github.com/neo-matrix/neo-matrix/relay/channeltype"
 
 	"github.com/gin-gonic/gin"
 )
 
-// https://github.com/songquanpeng/one-api/issues/79
+// https://github.com/neo-matrix/neo-matrix/issues/79
 
 type OpenAISubscriptionResponse struct {
 	Object             string  `json:"object"`

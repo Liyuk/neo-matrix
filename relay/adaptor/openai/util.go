@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 func ErrorWrapper(err error, code string, statusCode int) *model.ErrorWithStatusCode {

@@ -11,16 +11,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/ctxkey"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/model"
-	"github.com/songquanpeng/one-api/relay"
-	"github.com/songquanpeng/one-api/relay/adaptor/openai"
-	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
-	"github.com/songquanpeng/one-api/relay/channeltype"
-	"github.com/songquanpeng/one-api/relay/meta"
-	relaymodel "github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common"
+	"github.com/neo-matrix/neo-matrix/common/ctxkey"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/model"
+	"github.com/neo-matrix/neo-matrix/relay"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/openai"
+	billingratio "github.com/neo-matrix/neo-matrix/relay/billing/ratio"
+	"github.com/neo-matrix/neo-matrix/relay/channeltype"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	relaymodel "github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 func getImageRequest(c *gin.Context, _ int) (*relaymodel.ImageRequest, error) {

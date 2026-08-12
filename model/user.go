@@ -8,12 +8,12 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/blacklist"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/helper"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/common/random"
+	"github.com/neo-matrix/neo-matrix/common"
+	"github.com/neo-matrix/neo-matrix/common/blacklist"
+	"github.com/neo-matrix/neo-matrix/common/config"
+	"github.com/neo-matrix/neo-matrix/common/helper"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/common/random"
 )
 
 const (

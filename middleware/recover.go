@@ -3,8 +3,8 @@ package middleware
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/neo-matrix/neo-matrix/common"
+	"github.com/neo-matrix/neo-matrix/common/logger"
 	"net/http"
 	"runtime/debug"
 )
@@ -21,7 +21,7 @@ func RelayPanicRecover() gin.HandlerFunc {
 				logger.Errorf(ctx, fmt.Sprintf("request body: %s", string(body)))
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error": gin.H{
-						"message": fmt.Sprintf("Panic detected, error: %v. Please submit an issue with the related log here: https://github.com/songquanpeng/one-api", err),
+						"message": fmt.Sprintf("Panic detected, error: %v. Please submit an issue with the related log here: https://github.com/neo-matrix/neo-matrix", err),
 						"type":    "one_api_panic",
 					},
 				})

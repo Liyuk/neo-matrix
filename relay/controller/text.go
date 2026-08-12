@@ -9,17 +9,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/relay"
-	"github.com/songquanpeng/one-api/relay/adaptor"
-	"github.com/songquanpeng/one-api/relay/adaptor/openai"
-	"github.com/songquanpeng/one-api/relay/apitype"
-	"github.com/songquanpeng/one-api/relay/billing"
-	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
-	"github.com/songquanpeng/one-api/relay/channeltype"
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common/config"
+	"github.com/neo-matrix/neo-matrix/common/logger"
+	"github.com/neo-matrix/neo-matrix/relay"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/openai"
+	"github.com/neo-matrix/neo-matrix/relay/apitype"
+	"github.com/neo-matrix/neo-matrix/relay/billing"
+	billingratio "github.com/neo-matrix/neo-matrix/relay/billing/ratio"
+	"github.com/neo-matrix/neo-matrix/relay/channeltype"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {

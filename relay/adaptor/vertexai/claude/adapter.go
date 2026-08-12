@@ -5,11 +5,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"github.com/songquanpeng/one-api/common/ctxkey"
-	"github.com/songquanpeng/one-api/relay/adaptor/anthropic"
+	"github.com/neo-matrix/neo-matrix/common/ctxkey"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/anthropic"
 
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 var ModelList = []string{

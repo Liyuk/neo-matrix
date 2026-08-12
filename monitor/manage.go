@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common/config"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 func ShouldDisableChannel(err *model.Error, statusCode int) bool {

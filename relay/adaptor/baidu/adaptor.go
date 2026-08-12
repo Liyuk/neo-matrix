@@ -3,15 +3,15 @@ package baidu
 import (
 	"errors"
 	"fmt"
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/relaymode"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/relaymode"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/relay/adaptor"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 type Adaptor struct {

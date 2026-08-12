@@ -2,8 +2,8 @@ package doubao
 
 import (
 	"fmt"
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/relaymode"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/relaymode"
 )
 
 func GetRequestURL(meta *meta.Meta) (string, error) {

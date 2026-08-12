@@ -8,11 +8,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"github.com/songquanpeng/one-api/relay/adaptor"
-	channelhelper "github.com/songquanpeng/one-api/relay/adaptor"
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/model"
-	relaymodel "github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor"
+	channelhelper "github.com/neo-matrix/neo-matrix/relay/adaptor"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/model"
+	relaymodel "github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 var _ adaptor.Adaptor = new(Adaptor)

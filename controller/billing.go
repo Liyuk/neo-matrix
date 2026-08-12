@@ -2,10 +2,10 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/ctxkey"
-	"github.com/songquanpeng/one-api/model"
-	relaymodel "github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/common/config"
+	"github.com/neo-matrix/neo-matrix/common/ctxkey"
+	"github.com/neo-matrix/neo-matrix/model"
+	relaymodel "github.com/neo-matrix/neo-matrix/relay/model"
 )
 
 func GetSubscription(c *gin.Context) {

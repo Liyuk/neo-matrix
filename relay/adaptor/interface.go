@@ -2,8 +2,8 @@ package adaptor
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/songquanpeng/one-api/relay/meta"
-	"github.com/songquanpeng/one-api/relay/model"
+	"github.com/neo-matrix/neo-matrix/relay/meta"
+	"github.com/neo-matrix/neo-matrix/relay/model"
 	"io"
 	"net/http"
 )

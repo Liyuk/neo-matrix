@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/songquanpeng/one-api/controller"
-	"github.com/songquanpeng/one-api/middleware"
+	"github.com/neo-matrix/neo-matrix/controller"
+	"github.com/neo-matrix/neo-matrix/middleware"
 
 	"github.com/gin-gonic/gin"
 )
