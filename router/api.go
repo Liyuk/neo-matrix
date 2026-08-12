@@ -94,6 +94,37 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.PUT("/", controller.UpdateToken)
 			tokenRoute.DELETE("/:id", controller.DeleteToken)
 		}
+		// neo-matrix: 供给方（Key 托管 / 分成结算 / 提现）
+		supplierRoute := apiRouter.Group("/supplier")
+		{
+			supplierRoute.POST("/apply", middleware.UserAuth(), controller.SupplierApply)
+			supplierSelfRoute := supplierRoute.Group("/")
+			supplierSelfRoute.Use(middleware.SupplierAuth())
+			{
+				supplierSelfRoute.GET("/self", controller.SupplierSelf)
+				supplierSelfRoute.GET("/channel", controller.SupplierChannels)
+				supplierSelfRoute.POST("/channel", controller.SupplierAddChannel)
+				supplierSelfRoute.DELETE("/channel/:id", controller.SupplierDeleteChannel)
+				supplierSelfRoute.GET("/dashboard", controller.SupplierDashboard)
+				supplierSelfRoute.GET("/settlements", controller.SupplierSettlements)
+				supplierSelfRoute.POST("/withdraw", controller.SupplierWithdraw)
+				supplierSelfRoute.GET("/withdrawals", controller.SupplierWithdrawals)
+			}
+		}
+		// neo-matrix: 结算/提现管理端
+		settlementRoute := apiRouter.Group("/settlement")
+		settlementRoute.Use(middleware.AdminAuth())
+		{
+			settlementRoute.GET("/", controller.AdminSettlements)
+			settlementRoute.POST("/run", controller.AdminRunSettlement)
+			settlementRoute.PUT("/:id", controller.AdminUpdateSettlement)
+		}
+		withdrawalRoute := apiRouter.Group("/withdrawal")
+		withdrawalRoute.Use(middleware.AdminAuth())
+		{
+			withdrawalRoute.GET("/", controller.AdminWithdrawals)
+			withdrawalRoute.PUT("/:id", controller.AdminUpdateWithdrawal)
+		}
 		redemptionRoute := apiRouter.Group("/redemption")
 		redemptionRoute.Use(middleware.AdminAuth())
 		{

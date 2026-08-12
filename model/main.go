@@ -157,6 +157,15 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Log{}); err != nil {
 		return err
 	}
+	if err = DB.AutoMigrate(&Supplier{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&Settlement{}); err != nil {
+		return err
+	}
+	if err = DB.AutoMigrate(&Withdrawal{}); err != nil {
+		return err
+	}
 	if err = DB.AutoMigrate(&Channel{}); err != nil {
 		return err
 	}

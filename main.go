@@ -88,6 +88,14 @@ func main() {
 		logger.SysLog("batch update enabled with interval " + strconv.Itoa(config.BatchUpdateInterval) + "s")
 		model.InitBatchUpdater()
 	}
+	if os.Getenv("SETTLEMENT_FREQUENCY") != "" {
+		frequency, err := strconv.Atoi(os.Getenv("SETTLEMENT_FREQUENCY"))
+		if err != nil {
+			logger.FatalLog("failed to parse SETTLEMENT_FREQUENCY: " + err.Error())
+		}
+		go model.SettlementLoop(frequency)
+		logger.SysLog("settlement loop enabled with frequency " + strconv.Itoa(frequency) + "s")
+	}
 	if config.EnableMetric {
 		logger.SysLog("metric enabled, will disable channel if too much request failed")
 	}

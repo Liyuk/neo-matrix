@@ -76,6 +76,22 @@ func UserAuth() func(c *gin.Context) {
 	}
 }
 
+// SupplierAuth 供给方权限：登录用户 + 已是供给方（neo-matrix）。
+func SupplierAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		authHelper(c, model.RoleCommonUser)
+		id := c.GetInt("id")
+		if !model.IsSupplier(id) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无权进行此操作，请先申请成为供给方",
+			})
+			c.Abort()
+			return
+		}
+	}
+}
+
 func AdminAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, model.RoleAdminUser)

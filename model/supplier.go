@@ -1,0 +1,172 @@
+package model
+
+import (
+	"fmt"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+// Supplier 供给方（与 users 1:1）。有闲置 API Key、把 Key 托管到平台的用户。
+type Supplier struct {
+	Id              int     `json:"id"`
+	UserId          int     `json:"user_id" gorm:"uniqueIndex"`
+	Status          int     `json:"status" gorm:"default:1"` // 1=正常 2=冻结
+	PlatformRatio   float64 `json:"platform_ratio" gorm:"default:0.2"` // 平台抽利润比例
+	WithdrawBalance int     `json:"withdraw_balance" gorm:"default:0"` // 可提现余额(quota)
+	SettlingBalance int     `json:"settling_balance" gorm:"default:0"` // 结算中余额(quota)
+	TotalIncome     int     `json:"total_income" gorm:"default:0"`     // 累计收益(quota)
+	CreatedTime     int64   `json:"created_time" gorm:"bigint"`
+	UpdatedTime     int64   `json:"updated_time" gorm:"bigint"`
+}
+
+const (
+	SupplierStatusEnabled = 1
+	SupplierStatusFrozen  = 2
+)
+
+func GetSupplierByUserId(userId int) (*Supplier, error) {
+	supplier := Supplier{}
+	err := DB.Where("user_id = ?", userId).First(&supplier).Error
+	if err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+func GetSupplierById(id int) (*Supplier, error) {
+	supplier := Supplier{}
+	err := DB.First(&supplier, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+func IsSupplier(userId int) bool {
+	supplier, err := GetSupplierByUserId(userId)
+	return err == nil && supplier != nil && supplier.Status == SupplierStatusEnabled
+}
+
+// ApplySupplier 申请成为供给方。已存在则直接返回，幂等。
+func ApplySupplier(userId int) (*Supplier, error) {
+	if existing, err := GetSupplierByUserId(userId); err == nil && existing != nil {
+		return existing, nil
+	}
+	now := time.Now().Unix()
+	supplier := Supplier{
+		UserId:      userId,
+		Status:      SupplierStatusEnabled,
+		CreatedTime: now,
+		UpdatedTime: now,
+	}
+	if err := DB.Create(&supplier).Error; err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+// UpdateSupplierBalance 原子增减供给方余额（type: withdraw=可提现, settling=结算中）。
+func UpdateSupplierBalance(userId int, delta int, balanceType string) error {
+	field := "withdraw_balance"
+	if balanceType == "settling" {
+		field = "settling_balance"
+	}
+	return DB.Model(&Supplier{}).Where("user_id = ?", userId).
+		Update(field, gorm.Expr(field+" + ?", delta)).Error
+}
+
+// RequestWithdrawal 提现：从可提现余额扣减。返回当前余额是否足够。
+func (s *Supplier) RequestWithdrawal(amount int) error {
+	if s.WithdrawBalance < amount {
+		return fmt.Errorf("可提现余额不足：现有 %d，需 %d", s.WithdrawBalance, amount)
+	}
+	return UpdateSupplierBalance(s.UserId, -amount, "withdraw")
+}
+
+// Settlement 分成结算单。按周期聚合某渠道的消费日志生成。
+type Settlement struct {
+	Id            int   `json:"id"`
+	PeriodStart   int64 `json:"period_start" gorm:"bigint"`
+	PeriodEnd     int64 `json:"period_end" gorm:"bigint"`
+	SupplierId    int   `json:"supplier_id" gorm:"index"`
+	ChannelId     int   `json:"channel_id" gorm:"index"`
+	TotalQuota    int   `json:"total_quota"`   // 周期内零售额合计(消费者实付)
+	CostQuota     int   `json:"cost_quota"`    // 周期内成本合计(付给上游)
+	RevenueQuota  int   `json:"revenue_quota"` // 供给方分成
+	PlatformQuota int   `json:"platform_quota"`// 平台留存
+	Status        int   `json:"status" gorm:"default:0"` // 0待结算 1已确认 2已入账 3对账异常
+	CreatedTime   int64 `json:"created_time" gorm:"bigint"`
+}
+
+const (
+	SettlementStatusPending   = 0
+	SettlementStatusConfirmed = 1
+	SettlementStatusSettled   = 2
+	SettlementStatusMismatch  = 3
+)
+
+// Withdrawal 提现申请。
+type Withdrawal struct {
+	Id          int     `json:"id"`
+	SupplierId  int     `json:"supplier_id" gorm:"index"`
+	UserId      int     `json:"user_id" gorm:"index"`
+	AmountQuota int     `json:"amount_quota"` // 提现额度(quota)
+	AmountFiat  float64 `json:"amount_fiat"`  // 换算后金额(元)
+	PayMethod   string  `json:"pay_method"`   // 支付宝/微信/银行卡
+	PayAccount  string  `json:"pay_account"`
+	Status      int     `json:"status" gorm:"default:0"` // 0待审核 1打款中 2已打款 3已驳回
+	Reason      string  `json:"reason"`
+	CreatedTime int64   `json:"created_time" gorm:"bigint"`
+	UpdatedTime int64   `json:"updated_time" gorm:"bigint"`
+}
+
+const (
+	WithdrawalStatusPending  = 0
+	WithdrawalStatusPaying   = 1
+	WithdrawalStatusPaid     = 2
+	WithdrawalStatusRejected = 3
+)
+
+func CreateWithdrawal(withdrawal *Withdrawal) error {
+	return DB.Create(withdrawal).Error
+}
+
+func GetWithdrawalsByUser(userId int) ([]*Withdrawal, error) {
+	var withdrawals []*Withdrawal
+	err := DB.Where("user_id = ?", userId).Order("id desc").Find(&withdrawals).Error
+	return withdrawals, err
+}
+
+func GetAllWithdrawals() ([]*Withdrawal, error) {
+	var withdrawals []*Withdrawal
+	err := DB.Order("id desc").Find(&withdrawals).Error
+	return withdrawals, err
+}
+
+// ProcessWithdrawal 处理提现：status=2 打款完成；status=3 驳回并退回可提现余额。
+func ProcessWithdrawal(id int, status int, reason string) error {
+	var withdrawal Withdrawal
+	if err := DB.First(&withdrawal, "id = ?", id).Error; err != nil {
+		return err
+	}
+	if withdrawal.Status != WithdrawalStatusPending {
+		return fmt.Errorf("该提现已处理")
+	}
+	now := time.Now().Unix()
+	tx := DB.Begin()
+	if status == WithdrawalStatusRejected {
+		// 驳回：退回余额
+		if err := tx.Model(&Supplier{}).Where("user_id = ?", withdrawal.UserId).
+			Update("withdraw_balance", gorm.Expr("withdraw_balance + ?", withdrawal.AmountQuota)).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if err := tx.Model(&Withdrawal{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"status": status, "reason": reason, "updated_time": now}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit().Error
+}

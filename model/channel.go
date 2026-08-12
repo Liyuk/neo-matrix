@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/neo-matrix/neo-matrix/common/config"
 	"github.com/neo-matrix/neo-matrix/common/helper"
@@ -249,4 +250,31 @@ func DeleteChannelByStatus(status int64) (int64, error) {
 func DeleteDisabledChannel() (int64, error) {
 	result := DB.Where("status = ? or status = ?", ChannelStatusAutoDisabled, ChannelStatusManuallyDisabled).Delete(&Channel{})
 	return result.RowsAffected, result.Error
+}
+
+// GetChannelsByOwner 返回某供给方托管的所有渠道（neo-matrix）。
+func GetChannelsByOwner(ownerId int) ([]*Channel, error) {
+	var channels []*Channel
+	err := DB.Where("owner_id = ?", ownerId).Order("id desc").Find(&channels).Error
+	return channels, err
+}
+
+// DeleteChannelById 删除渠道及其能力表记录（neo-matrix）。
+func DeleteChannelById(id int) error {
+	if err := DB.Delete(&Channel{}, "id = ?", id).Error; err != nil {
+		return err
+	}
+	channel := Channel{Id: id}
+	return channel.DeleteAbilities()
+}
+
+// GetFirstModel 取渠道配置的第一个模型作为测试模型（neo-matrix）。
+func (channel *Channel) GetFirstModel() string {
+	models := strings.Split(channel.Models, ",")
+	for _, m := range models {
+		if m != "" {
+			return m
+		}
+	}
+	return ""
 }
