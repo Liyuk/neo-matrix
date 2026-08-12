@@ -1,6 +1,13 @@
 export const CHANNEL_OPTIONS = [
   { key: 1, text: 'OpenAI', value: 1, color: 'green' },
   {
+    key: 52,
+    text: '订阅转 API（扩展）',
+    value: 52,
+    color: 'violet',
+    description: '订阅账号转 API，扩展预留',
+  },
+  {
     key: 50,
     text: 'OpenAI 兼容',
     value: 50,

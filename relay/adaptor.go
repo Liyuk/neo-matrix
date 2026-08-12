@@ -17,6 +17,7 @@ import (
 	"github.com/neo-matrix/neo-matrix/relay/adaptor/palm"
 	"github.com/neo-matrix/neo-matrix/relay/adaptor/proxy"
 	"github.com/neo-matrix/neo-matrix/relay/adaptor/replicate"
+	"github.com/neo-matrix/neo-matrix/relay/adaptor/subscription"
 	"github.com/neo-matrix/neo-matrix/relay/adaptor/tencent"
 	"github.com/neo-matrix/neo-matrix/relay/adaptor/vertexai"
 	"github.com/neo-matrix/neo-matrix/relay/adaptor/xunfei"
@@ -64,6 +65,8 @@ func GetAdaptor(apiType int) adaptor.Adaptor {
 		return &proxy.Adaptor{}
 	case apitype.Replicate:
 		return &replicate.Adaptor{}
+	case apitype.SubscriptionToAPI:
+		return &subscription.Adaptor{}
 	}
 	return nil
 }

@@ -53,5 +53,6 @@ const (
 	AliBailian
 	OpenAICompatible
 	GeminiOpenAICompatible
+	SubscriptionToAPI // neo-matrix: 订阅账号转 API（扩展预留，如 Claude/OpenAI 订阅号）
 	Dummy
 )

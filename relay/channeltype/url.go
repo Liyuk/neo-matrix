@@ -54,6 +54,7 @@ var ChannelBaseURLs = []string{
 	"",                                          // 50
 
 	"https://generativelanguage.googleapis.com/v1beta/openai/", // 51
+	"", // 52 SubscriptionToAPI（订阅转 API，扩展预留）
 }
 
 func init() {
