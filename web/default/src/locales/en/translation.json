@@ -13,7 +13,9 @@
     "chat": "Chat",
     "login": "Login",
     "logout": "Logout",
-    "register": "Register"
+    "register": "Register",
+    "supplier": "Supplier",
+    "settlement": "Settlements"
   },
   "topup": {
     "title": "Top Up Center",

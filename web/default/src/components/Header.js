@@ -67,6 +67,17 @@ let headerButtons = [
     icon: 'setting',
   },
   {
+    name: 'header.supplier',
+    to: '/supplier',
+    icon: 'share alternate',
+  },
+  {
+    name: 'header.settlement',
+    to: '/settlement',
+    icon: 'balance scale',
+    admin: true,
+  },
+  {
     name: 'header.about',
     to: '/about',
     icon: 'info circle',

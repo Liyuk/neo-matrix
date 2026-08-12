@@ -13,7 +13,9 @@
     "chat": "聊天",
     "login": "登录",
     "logout": "注销",
-    "register": "注册"
+    "register": "注册",
+    "supplier": "供给方中心",
+    "settlement": "结算管理"
   },
   "topup": {
     "title": "充值中心",
