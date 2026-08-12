@@ -69,14 +69,15 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 			continue
 		}
 		// 分成计算：利润 = 零售 - 成本；供给方得 cost + 利润×(1-platform_ratio)
+		// 边界：成本 >= 零售时（负利润），供给方最多拿成本（上限=零售），平台不补贴、不留负数。
 		profit := item.TotalQuota - item.CostQuota
 		platformRatio := supplier.PlatformRatio
 		if platformRatio <= 0 || platformRatio > 1 {
 			platformRatio = 0.2
 		}
 		revenueQuota := item.CostQuota + int(float64(profit)*(1-platformRatio))
-		if revenueQuota < 0 {
-			revenueQuota = 0
+		if revenueQuota < 0 || revenueQuota > item.TotalQuota {
+			revenueQuota = item.TotalQuota
 		}
 		platformQuota := item.TotalQuota - revenueQuota
 
