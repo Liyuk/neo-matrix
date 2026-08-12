@@ -2,10 +2,9 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
-
-	"gorm.io/gorm"
 
 	"github.com/neo-matrix/neo-matrix/common"
 	"github.com/neo-matrix/neo-matrix/common/utils"
@@ -20,7 +19,6 @@ type Ability struct {
 }
 
 func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
-	ability := Ability{}
 	groupCol := "`group`"
 	trueVal := "1"
 	if common.UsingPostgreSQL {
@@ -28,26 +26,66 @@ func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority b
 		trueVal = "true"
 	}
 
-	var err error = nil
-	var channelQuery *gorm.DB
-	if ignoreFirstPriority {
-		channelQuery = DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-	} else {
-		maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-		channelQuery = DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal+" and priority = (?)", group, model, maxPrioritySubQuery)
-	}
-	if common.UsingSQLite || common.UsingPostgreSQL {
-		err = channelQuery.Order("RANDOM()").First(&ability).Error
-	} else {
-		err = channelQuery.Order("RAND()").First(&ability).Error
-	}
-	if err != nil {
+	// neo-matrix: cost-optimal routing (DB path, when MEMORY_CACHE_ENABLED=false).
+	// Pull all enabled candidates for (group, model) and pick the cheapest in the top priority tier.
+	var abilities []Ability
+	query := DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
+	if err := query.Find(&abilities).Error; err != nil {
 		return nil, err
 	}
-	channel := Channel{}
-	channel.Id = ability.ChannelId
-	err = DB.First(&channel, "id = ?", ability.ChannelId).Error
-	return &channel, err
+	if len(abilities) == 0 {
+		return nil, fmt.Errorf("channel not found for model %s in group %s", model, group)
+	}
+
+	loadChannel := func(ability Ability) (*Channel, error) {
+		channel := Channel{}
+		channel.Id = ability.ChannelId
+		if err := DB.First(&channel, "id = ?", ability.ChannelId).Error; err != nil {
+			return nil, err
+		}
+		return &channel, nil
+	}
+
+	if ignoreFirstPriority {
+		// retry: skip the failed top priority tier, pick from lower tiers
+		maxPriority := *abilities[0].Priority
+		for i := 1; i < len(abilities); i++ {
+			if *abilities[i].Priority > maxPriority {
+				maxPriority = *abilities[i].Priority
+			}
+		}
+		for i := range abilities {
+			if *abilities[i].Priority < maxPriority {
+				return loadChannel(abilities[i])
+			}
+		}
+		return nil, fmt.Errorf("no lower priority channel found for model %s", model)
+	}
+
+	// normal: top priority tier, cheapest cost wins
+	maxPriority := *abilities[0].Priority
+	for i := 1; i < len(abilities); i++ {
+		if *abilities[i].Priority > maxPriority {
+			maxPriority = *abilities[i].Priority
+		}
+	}
+	var cheapest *Channel
+	for i := range abilities {
+		if *abilities[i].Priority != maxPriority {
+			continue
+		}
+		channel, err := loadChannel(abilities[i])
+		if err != nil {
+			return nil, err
+		}
+		if cheapest == nil || channel.EffectiveCost(model) < cheapest.EffectiveCost(model) {
+			cheapest = channel
+		}
+	}
+	if cheapest == nil {
+		return nil, fmt.Errorf("no enabled channel found for model %s in group %s", model, group)
+	}
+	return cheapest, nil
 }
 
 func (channel *Channel) AddAbilities() error {

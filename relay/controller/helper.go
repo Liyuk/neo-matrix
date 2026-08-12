@@ -122,6 +122,8 @@ func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.M
 	if err != nil {
 		logger.Error(ctx, "error update user quota cache: "+err.Error())
 	}
+	// neo-matrix: compute upstream cost quota for supplier settlement
+	costQuota := computeChannelCostQuota(meta.ChannelId, textRequest.Model, meta.ChannelType, promptTokens, completionTokens)
 	logContent := fmt.Sprintf("倍率：%.2f × %.2f × %.2f", modelRatio, groupRatio, completionRatio)
 	model.RecordConsumeLog(ctx, &model.Log{
 		UserId:            meta.UserId,
@@ -131,6 +133,7 @@ func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.M
 		ModelName:         textRequest.Model,
 		TokenName:         meta.TokenName,
 		Quota:             int(quota),
+		CostQuota:         costQuota,
 		Content:           logContent,
 		IsStream:          meta.IsStream,
 		ElapsedTime:       helper.CalcElapsedTime(meta.StartTime),
@@ -138,6 +141,23 @@ func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.M
 	})
 	model.UpdateUserUsedQuotaAndRequestCount(meta.UserId, quota)
 	model.UpdateChannelUsedQuota(meta.ChannelId, quota)
+}
+
+// computeChannelCostQuota 计算该请求在上游渠道的实际成本（quota）。
+// 与零售 quota 同构：ceil((prompt + completion×completionRatio) × modelRatio × channel.EffectiveCost(modelName))
+func computeChannelCostQuota(channelId int, modelName string, channelType int, promptTokens int, completionTokens int) int {
+	if channelId == 0 {
+		return 0
+	}
+	channel, err := model.GetChannelById(channelId, false)
+	if err != nil || channel == nil {
+		// 查不到渠道（可能已删除），成本按零售价计（EffectiveCost=1.0）
+		channel = &model.Channel{}
+	}
+	completionRatio := billingratio.GetCompletionRatio(modelName, channelType)
+	modelRatio := billingratio.GetModelRatio(modelName, channelType)
+	cost := (float64(promptTokens) + float64(completionTokens)*completionRatio) * modelRatio * channel.EffectiveCost(modelName)
+	return int(math.Ceil(cost))
 }
 
 func getMappedModelName(modelName string, mapping map[string]string) (string, bool) {

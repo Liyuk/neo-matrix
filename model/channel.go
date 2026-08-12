@@ -38,6 +38,34 @@ type Channel struct {
 	Priority           *int64  `json:"priority" gorm:"bigint;default:0"`
 	Config             string  `json:"config"`
 	SystemPrompt       *string `json:"system_prompt" gorm:"type:text"`
+	// neo-matrix: 供给方归属与成本
+	OwnerId        int     `json:"owner_id" gorm:"default:0"` // 供给方 users.id；0=平台自有渠道
+	CostRatio      float64 `json:"cost_ratio" gorm:"default:1.0"` // 成本倍率：1.0 = 成本价等于零售价(ModelRatio)
+	ModelCostRatio string  `json:"model_cost_ratio" gorm:"type:text;default:'{}'"` // JSON: {"gpt-4o":0.5} 每模型成本价(覆盖 CostRatio)
+	IsShared       int     `json:"is_shared" gorm:"default:0"` // 1=供给方托管渠道
+	SettleEnabled  int     `json:"settle_enabled" gorm:"default:1"` // 是否参与分成结算
+}
+
+// GetCostRatio 返回该渠道在某模型上的成本倍率：
+// 优先命中 ModelCostRatio JSON 里的模型级配置，否则回退到 CostRatio。
+func (channel *Channel) GetCostRatio(model string) float64 {
+	if channel.ModelCostRatio != "" && channel.ModelCostRatio != "{}" {
+		m := make(map[string]float64)
+		if err := json.Unmarshal([]byte(channel.ModelCostRatio), &m); err == nil {
+			if ratio, ok := m[model]; ok && ratio > 0 {
+				return ratio
+			}
+		}
+	}
+	if channel.CostRatio > 0 {
+		return channel.CostRatio
+	}
+	return 1.0
+}
+
+// EffectiveCost 渠道相对零售价 ModelRatio 的成本倍率，用于成本最优路由排序。
+func (channel *Channel) EffectiveCost(model string) float64 {
+	return channel.GetCostRatio(model)
 }
 
 type ChannelConfig struct {

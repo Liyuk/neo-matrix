@@ -9,7 +9,6 @@ import (
 	"github.com/neo-matrix/neo-matrix/common/config"
 	"github.com/neo-matrix/neo-matrix/common/logger"
 	"github.com/neo-matrix/neo-matrix/common/random"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -200,11 +199,15 @@ func InitChannelCache() {
 		}
 	}
 
-	// sort by priority
+	// sort by priority, then by cost (ascending) for cost-optimal routing (neo-matrix)
 	for group, model2channels := range newGroup2model2channels {
 		for model, channels := range model2channels {
 			sort.Slice(channels, func(i, j int) bool {
-				return channels[i].GetPriority() > channels[j].GetPriority()
+				if channels[i].GetPriority() != channels[j].GetPriority() {
+					return channels[i].GetPriority() > channels[j].GetPriority()
+				}
+				// 同优先级内，成本低的排前面（成本最优路由）
+				return channels[i].EffectiveCost(model) < channels[j].EffectiveCost(model)
 			})
 			newGroup2model2channels[group][model] = channels
 		}
@@ -234,8 +237,19 @@ func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPrior
 	if len(channels) == 0 {
 		return nil, errors.New("channel not found")
 	}
+	return pickCheapestInTopTier(channels, model, ignoreFirstPriority)
+}
+
+// pickCheapestInTopTier 成本最优路由的选路核心（纯函数，可单测）。
+// channels 已按"优先级降序 → 成本升序"排序（InitChannelCache）。
+// - 正常：在最高优先级 tier 内选成本最低的渠道。
+// - ignoreFirstPriority=true（重试）：跳过失败的最高 tier，从低优先级里随机挑一个。
+//   若只有一个 tier，则退化为在 tier 内选成本最低（避免重试死循环打同一个渠道）。
+func pickCheapestInTopTier(channels []*Channel, model string, ignoreFirstPriority bool) (*Channel, error) {
+	if len(channels) == 0 {
+		return nil, errors.New("channel not found")
+	}
 	endIdx := len(channels)
-	// choose by priority
 	firstChannel := channels[0]
 	if firstChannel.GetPriority() > 0 {
 		for i := range channels {
@@ -245,11 +259,19 @@ func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPrior
 			}
 		}
 	}
-	idx := rand.Intn(endIdx)
-	if ignoreFirstPriority {
-		if endIdx < len(channels) { // which means there are more than one priority
-			idx = random.RandRange(endIdx, len(channels))
+	if ignoreFirstPriority && endIdx < len(channels) {
+		// retry: skip the failed top tier and pick from lower tiers
+		return channels[random.RandRange(endIdx, len(channels))], nil
+	}
+	// pick the cheapest within the top tier
+	cheapestIdx := 0
+	cheapestCost := channels[0].EffectiveCost(model)
+	for i := 1; i < endIdx; i++ {
+		cost := channels[i].EffectiveCost(model)
+		if cost < cheapestCost {
+			cheapestCost = cost
+			cheapestIdx = i
 		}
 	}
-	return channels[idx], nil
+	return channels[cheapestIdx], nil
 }
