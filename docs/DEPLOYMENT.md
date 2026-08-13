@@ -47,6 +47,8 @@ done
 
 ## 三、升级指南
 
+> 完整升级步骤、行为变更与回滚见 **[docs/UPGRADE.md](UPGRADE.md)**。以下为速览。
+
 - **数据库迁移**:GORM AutoMigrate 自动补列/建表。升级前**备份 SQLite 文件**(或 MySQL dump)。
 - **已知坑**:
   - 老库升级会自动补 `channels`/`suppliers`/`settlements` 新列,若报 `duplicate column`,说明半迁移状态,重启前确认表结构;

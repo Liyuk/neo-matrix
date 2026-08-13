@@ -77,7 +77,8 @@ go run .               # 或 ./bin/neo-matrix
 
 - [改造架构](docs/ARCHITECTURE.md) — 分阶段计划、数据表设计、路由/计费机制详解
 - [平台规则](docs/rules/RULES.md) — 供给方准入/结算/提现/违规处罚(运营规范)
-- [部署指南](docs/DEPLOYMENT.md) — 单机/生产/离线/升级/故障排查
+- [部署指南](docs/DEPLOYMENT.md) — 单机/生产/离线/故障排查
+- [升级指南](docs/UPGRADE.md) — 从旧版升级的步骤/行为变更/回滚
 - [可行性评估](docs/FEASIBILITY.md) — 竞品/合规/风险清单
 - [供给侧定价标准](docs/SUPPLIER_PRICING.md)
 
