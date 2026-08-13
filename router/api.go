@@ -119,6 +119,13 @@ func SetApiRouter(router *gin.Engine) {
 			settlementRoute.POST("/run", controller.AdminRunSettlement)
 			settlementRoute.PUT("/:id", controller.AdminUpdateSettlement)
 		}
+		// neo-matrix: 成本申报审批管理端
+		costDeclRoute := apiRouter.Group("/cost-decl")
+		costDeclRoute.Use(middleware.AdminAuth())
+		{
+			costDeclRoute.GET("/pending", controller.AdminCostDeclList)
+			costDeclRoute.PUT("/:id", controller.AdminReviewCostDecl)
+		}
 		withdrawalRoute := apiRouter.Group("/withdrawal")
 		withdrawalRoute.Use(middleware.AdminAuth())
 		{

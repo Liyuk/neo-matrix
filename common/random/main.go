@@ -59,3 +59,34 @@ func GetRandomNumberString(length int) string {
 func RandRange(min, max int) int {
 	return min + rand.Intn(max-min)
 }
+
+// WeightedPick 按权重数组加权随机取一个下标。权重全为 0 时回退均匀随机。
+// weights 长度必须 > 0；总权重 <= 0（含全 0 或负数）时视为无权重，均匀随机返回一个下标。
+func WeightedPick(weights []float64) int {
+	total := 0.0
+	for _, w := range weights {
+		if w > 0 {
+			total += w
+		}
+	}
+	if total <= 0 {
+		return rand.Intn(len(weights))
+	}
+	r := rand.Float64() * total
+	for i, w := range weights {
+		if w <= 0 {
+			continue
+		}
+		r -= w
+		if r <= 0 {
+			return i
+		}
+	}
+	// 浮点误差兜底：返回最后一个正权重下标
+	for i := len(weights) - 1; i >= 0; i-- {
+		if weights[i] > 0 {
+			return i
+		}
+	}
+	return 0
+}

@@ -160,16 +160,45 @@ func migrateDB() error {
 	if err = DB.AutoMigrate(&Supplier{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&Settlement{}); err != nil {
+	// settlements 的迁移（含存量库去重+建唯一索引），替代单独 AutoMigrate(&Settlement{})，
+	// 因为 AutoMigrate 在存在重复行时建唯一索引会直接失败。
+	if err = migrateSettlementTable(); err != nil {
 		return err
 	}
 	if err = DB.AutoMigrate(&Withdrawal{}); err != nil {
 		return err
 	}
-	if err = DB.AutoMigrate(&Channel{}); err != nil {
+	return nil
+}
+
+// migrateSettlementTable 迁移 settlements 表：
+//  1. 表不存在 → 直接 AutoMigrate 建新表（含唯一索引）；
+//  2. 表已存在 → 先按 (period_start, period_end, channel_id) 去重（保留每组最新一条），
+//     再 AutoMigrate 补齐缺失列与唯一索引。历史版本因缺少该索引可能产生重复结算单。
+func migrateSettlementTable() error {
+	if !DB.Migrator().HasTable(&Settlement{}) {
+		return DB.AutoMigrate(&Settlement{})
+	}
+	// 按 (period_start, period_end, channel_id) 分组，保留每组 id 最大（最新）的一条
+	var dupIds []int
+	if err := DB.Raw(`
+		SELECT id FROM settlements s
+		WHERE EXISTS (
+			SELECT 1 FROM settlements t
+			WHERE t.period_start = s.period_start
+			  AND t.period_end   = s.period_end
+			  AND t.channel_id   = s.channel_id
+			  AND t.id > s.id
+		)`).Scan(&dupIds).Error; err != nil {
 		return err
 	}
-	return nil
+	if len(dupIds) > 0 {
+		logger.SysLogf("settlements: deleting %d duplicate rows before creating unique index", len(dupIds))
+		if err := DB.Where("id IN ?", dupIds).Delete(&Settlement{}).Error; err != nil {
+			return err
+		}
+	}
+	return DB.AutoMigrate(&Settlement{})
 }
 
 func InitLogDB() {

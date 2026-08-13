@@ -18,6 +18,14 @@ const (
 	ChannelStatusAutoDisabled     = 3
 )
 
+// 成本申报状态（CostDeclStatus）
+const (
+	CostDeclNone     = 0 // 未申报
+	CostDeclPending  = 1 // 待审
+	CostDeclApproved = 2 // 已核准
+	CostDeclRejected = 3 // 已驳回
+)
+
 type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
@@ -45,6 +53,10 @@ type Channel struct {
 	ModelCostRatio string  `json:"model_cost_ratio" gorm:"type:text;default:'{}'"` // JSON: {"gpt-4o":0.5} 每模型成本价(覆盖 CostRatio)
 	IsShared       int     `json:"is_shared" gorm:"default:0"` // 1=供给方托管渠道
 	SettleEnabled  int     `json:"settle_enabled" gorm:"default:1"` // 是否参与分成结算
+	// neo-matrix: 信任阶梯与成本申报
+	TrustLevel    int    `json:"trust_level" gorm:"default:1"` // 渠道信任等级 1-5（1=新接入起步，5=高信任）。路由加权随机按此放大成本
+	CostDeclStatus int   `json:"cost_decl_status" gorm:"default:0"` // 成本申报状态 0未申报/1待审/2核准/3驳回
+	CostDeclNote  string `json:"cost_decl_note" gorm:"type:text"`   // 申报说明/审批理由
 }
 
 // GetCostRatio 返回该渠道在某模型上的成本倍率：
@@ -67,6 +79,54 @@ func (channel *Channel) GetCostRatio(model string) float64 {
 // EffectiveCost 渠道相对零售价 ModelRatio 的成本倍率，用于成本最优路由排序。
 func (channel *Channel) EffectiveCost(model string) float64 {
 	return channel.GetCostRatio(model)
+}
+
+// GetTrustLevel 渠道信任等级（1-5），nil/非法值回退 1。
+func (channel *Channel) GetTrustLevel() int {
+	if channel.TrustLevel < 1 {
+		return 1
+	}
+	if channel.TrustLevel > 5 {
+		return 5
+	}
+	return channel.TrustLevel
+}
+
+// trustPenaltyFactor 低信任放大成本，让低信任渠道在加权随机里概率更低（但非零，保证能爬坡）。
+// 信任 1 → ×TRUST_PENALTY_LV1（默认 5.0）；信任 2 → ×TRUST_PENALTY_LV2（默认 3.0）；信任 3+ → ×1.0。
+// 可通过环境变量 TRUST_PENALTY_LV1/LV2 调整力度（值越大，低信任渠道越难被选中）。
+// 注意：仅用于路由（RoutingCost/WeightFactor），不用于结算（EffectiveCost 保持纯成本）。
+func trustPenaltyFactor(trustLevel int) float64 {
+	switch trustLevel {
+	case 1:
+		if config.TrustPenaltyLv1 > 1.0 {
+			return config.TrustPenaltyLv1
+		}
+		return 5.0
+	case 2:
+		if config.TrustPenaltyLv2 > 1.0 {
+			return config.TrustPenaltyLv2
+		}
+		return 3.0
+	default:
+		return 1.0
+	}
+}
+
+// RoutingCost 路由专用成本 = 成本倍率 × 信任惩罚。低信任渠道成本被放大 → 加权随机里选中概率低。
+// 与 EffectiveCost 的差别：EffectiveCost 是纯成本（用于结算 cost_quota），RoutingCost 额外含信任惩罚（仅路由）。
+func (channel *Channel) RoutingCost(model string) float64 {
+	return channel.GetCostRatio(model) * trustPenaltyFactor(channel.GetTrustLevel())
+}
+
+// WeightFactor 加权随机分值 = 1 / RoutingCost。成本越低、信任越高 → 分值越高 → 选中概率越大。
+// 低信任渠道分值低但非零 → 偶尔被选中拿到流量爬坡。
+func (channel *Channel) WeightFactor(model string) float64 {
+	cost := channel.RoutingCost(model)
+	if cost <= 0 {
+		return 1.0
+	}
+	return 1.0 / cost
 }
 
 type ChannelConfig struct {
@@ -227,6 +287,39 @@ func UpdateChannelStatusById(id int, status int) {
 	}
 }
 
+// ReviewChannelCostDecl 管理员审批渠道成本申报。
+// status: CostDeclApproved=核准 / CostDeclRejected=驳回；note 为审批理由。
+// 核准时可顺带指定信任等级（trustLevel>0 时覆盖渠道信任），未指定则维持现状。
+func ReviewChannelCostDecl(id int, status int, note string, trustLevel int) error {
+	update := map[string]interface{}{
+		"cost_decl_status": status,
+		"cost_decl_note":   note,
+	}
+	if trustLevel >= 1 && trustLevel <= 5 {
+		update["trust_level"] = trustLevel
+	}
+	if err := DB.Model(&Channel{}).Where("id = ?", id).Updates(update).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateChannelTrust 更新渠道信任等级（1-5），并刷新路由缓存（低信任渠道调度的概率倾斜即时生效）。
+func UpdateChannelTrust(channelId int, level int) error {
+	if level < 1 {
+		level = 1
+	}
+	if level > 5 {
+		level = 5
+	}
+	err := DB.Model(&Channel{}).Where("id = ?", channelId).Update("trust_level", level).Error
+	if err != nil {
+		return err
+	}
+	InitChannelCache()
+	return nil
+}
+
 func UpdateChannelUsedQuota(id int, quota int64) {
 	if config.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
@@ -256,6 +349,13 @@ func DeleteDisabledChannel() (int64, error) {
 func GetChannelsByOwner(ownerId int) ([]*Channel, error) {
 	var channels []*Channel
 	err := DB.Where("owner_id = ?", ownerId).Order("id desc").Find(&channels).Error
+	return channels, err
+}
+
+// GetChannelsByCostDeclStatus 返回指定成本申报状态的渠道（管理端审批用，neo-matrix）。
+func GetChannelsByCostDeclStatus(status int) ([]*Channel, error) {
+	var channels []*Channel
+	err := DB.Where("cost_decl_status = ?", status).Order("id desc").Find(&channels).Error
 	return channels, err
 }
 

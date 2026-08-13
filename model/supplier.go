@@ -16,8 +16,12 @@ type Supplier struct {
 	WithdrawBalance int     `json:"withdraw_balance" gorm:"default:0"` // 可提现余额(quota)
 	SettlingBalance int     `json:"settling_balance" gorm:"default:0"` // 结算中余额(quota)
 	TotalIncome     int     `json:"total_income" gorm:"default:0"`     // 累计收益(quota)
-	CreatedTime     int64   `json:"created_time" gorm:"bigint"`
-	UpdatedTime     int64   `json:"updated_time" gorm:"bigint"`
+	// neo-matrix: 供给方信任与成本申报
+	TrustLevel     int    `json:"trust_level" gorm:"default:1"` // 供给方信任等级 1-5
+	CostDeclStatus int    `json:"cost_decl_status" gorm:"default:0"` // 成本申报状态 0未申报/1待审/2核准/3驳回
+	CostDeclNote   string `json:"cost_decl_note" gorm:"type:text"`   // 申报说明/审批理由
+	CreatedTime    int64  `json:"created_time" gorm:"bigint"`
+	UpdatedTime    int64  `json:"updated_time" gorm:"bigint"`
 }
 
 const (
@@ -76,6 +80,21 @@ func UpdateSupplierBalance(userId int, delta int, balanceType string) error {
 		Update(field, gorm.Expr(field+" + ?", delta)).Error
 }
 
+// UpdateSupplierTrust 更新供给方信任等级（1-5），记录操作者与时间。
+func UpdateSupplierTrust(userId int, level int, operatorId int) error {
+	if level < 1 {
+		level = 1
+	}
+	if level > 5 {
+		level = 5
+	}
+	return DB.Model(&Supplier{}).Where("user_id = ?", userId).
+		Updates(map[string]interface{}{
+			"trust_level":  level,
+			"updated_time": time.Now().Unix(),
+		}).Error
+}
+
 // RequestWithdrawal 提现：从可提现余额扣减。返回当前余额是否足够。
 func (s *Supplier) RequestWithdrawal(amount int) error {
 	if s.WithdrawBalance < amount {
@@ -85,17 +104,19 @@ func (s *Supplier) RequestWithdrawal(amount int) error {
 }
 
 // Settlement 分成结算单。按周期聚合某渠道的消费日志生成。
+// UNIQUE(period_start, period_end, channel_id) 保证同周期同渠道只有一条结算单（幂等防重）。
 type Settlement struct {
 	Id            int   `json:"id"`
-	PeriodStart   int64 `json:"period_start" gorm:"bigint"`
-	PeriodEnd     int64 `json:"period_end" gorm:"bigint"`
+	PeriodStart   int64 `json:"period_start" gorm:"bigint;uniqueIndex:idx_settlement_period_channel"`
+	PeriodEnd     int64 `json:"period_end" gorm:"bigint;uniqueIndex:idx_settlement_period_channel"`
 	SupplierId    int   `json:"supplier_id" gorm:"index"`
-	ChannelId     int   `json:"channel_id" gorm:"index"`
+	ChannelId     int   `json:"channel_id" gorm:"uniqueIndex:idx_settlement_period_channel"`
 	TotalQuota    int   `json:"total_quota"`   // 周期内零售额合计(消费者实付)
 	CostQuota     int   `json:"cost_quota"`    // 周期内成本合计(付给上游)
 	RevenueQuota  int   `json:"revenue_quota"` // 供给方分成
 	PlatformQuota int   `json:"platform_quota"`// 平台留存
 	Status        int   `json:"status" gorm:"default:0"` // 0待结算 1已确认 2已入账 3对账异常
+	UsedQuotaEnd  int64 `json:"used_quota_end" gorm:"bigint;default:0"` // 本周期末 channel.used_quota 快照，用于下周期增量对账
 	CreatedTime   int64 `json:"created_time" gorm:"bigint"`
 }
 

@@ -2,12 +2,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/neo-matrix/neo-matrix/common/config"
 	"github.com/neo-matrix/neo-matrix/common/ctxkey"
 	"github.com/neo-matrix/neo-matrix/common/helper"
 	"github.com/neo-matrix/neo-matrix/model"
@@ -78,12 +80,23 @@ func SupplierAddChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "API Key 不能为空"})
 		return
 	}
-	// 成本倍率合法性（防恶意低报，下限 0.01）
+	// 成本倍率合法性：锚定官方价（ModelRatio），下限 1.0、上限 MAX_COST_RATIO（默认 3.0）。
+	// 见 docs/SUPPLIER_PRICING.md 标准 2：成本价不得低于官方零售基准（防低报抢量），也不得虚高（防抬结算）。
+	// 特殊例外：订阅转 API（P5 预留）等渠道成本基础可低于官方价，需走成本申报审批（CostDeclStatus=1），
+	// 审批核准前不放开成本下限约束。
 	if channel.CostRatio <= 0 {
 		channel.CostRatio = 1.0
 	}
-	if channel.CostRatio < 0.01 {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "成本倍率过低，请填写真实成本"})
+	maxCostRatio := config.MaxCostRatio
+	if maxCostRatio <= 0 {
+		maxCostRatio = 3.0
+	}
+	if channel.CostRatio < 1.0 && channel.CostDeclStatus != model.CostDeclApproved {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "成本倍率不得低于官方基准（1.0），请填写真实成本"})
+		return
+	}
+	if channel.CostRatio > maxCostRatio {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": fmt.Sprintf("成本倍率过高（上限 %.1f），请填写真实成本", maxCostRatio)})
 		return
 	}
 	// 预校验：用临时 channel 跑一次测试请求
@@ -107,6 +120,10 @@ func SupplierAddChannel(c *gin.Context) {
 	channel.SettleEnabled = 1
 	channel.Status = model.ChannelStatusEnabled
 	channel.Group = "default" // 供给方渠道服务默认分组
+	channel.TrustLevel = 1    // 新渠道信任阶梯起步
+	if channel.CostDeclStatus == 0 {
+		channel.CostDeclStatus = model.CostDeclPending // 成本申报待审
+	}
 	channel.CreatedTime = helper.GetTimestamp()
 	if err := channel.Insert(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -332,4 +349,45 @@ func AdminUpdateWithdrawal(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "操作成功"})
+}
+
+// AdminCostDeclList 待审成本申报列表（管理端）
+func AdminCostDeclList(c *gin.Context) {
+	channels, err := model.GetChannelsByCostDeclStatus(model.CostDeclPending)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": channels})
+}
+
+// AdminReviewCostDecl 审批渠道成本申报：核准(置 CostDeclApproved + 可选信任等级)或驳回(CostDeclRejected)
+func AdminReviewCostDecl(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	var req struct {
+		Status     int    `json:"status"`
+		Reason     string `json:"reason"`
+		TrustLevel int    `json:"trust_level"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if req.Status != model.CostDeclApproved && req.Status != model.CostDeclRejected {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "状态仅支持核准(2)或驳回(3)"})
+		return
+	}
+	if err := model.ReviewChannelCostDecl(id, req.Status, req.Reason, req.TrustLevel); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	// 核准时若同时指定了信任等级，刷新路由缓存（调度概率倾斜即时生效）
+	if req.TrustLevel >= 1 && req.TrustLevel <= 5 {
+		model.InitChannelCache()
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "成本申报已处理"})
 }

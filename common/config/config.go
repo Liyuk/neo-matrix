@@ -109,6 +109,15 @@ var RequestInterval = time.Duration(requestInterval) * time.Second
 
 var SyncFrequency = env.Int("SYNC_FREQUENCY", 10*60) // unit is second
 
+// MaxCostRatio 供给方成本倍率上限（相对官方价 ModelRatio）。见 docs/SUPPLIER_PRICING.md 标准 2。
+var MaxCostRatio = env.Float64("MAX_COST_RATIO", 3.0)
+
+// TrustPenaltyLv1 / TrustPenaltyLv2 低信任渠道在路由里的成本放大倍数（加权随机分值=1/(成本×惩罚)）。
+// 信任 1（新接入）/ 信任 2（爬坡中）被放大，降低选中概率但非零（保证能拿到流量爬坡）；信任 3+ 无惩罚。
+// 默认较激进：信任 1 → ×5.0，信任 2 → ×3.0，减少异常渠道高频命中。
+var TrustPenaltyLv1 = env.Float64("TRUST_PENALTY_LV1", 5.0)
+var TrustPenaltyLv2 = env.Float64("TRUST_PENALTY_LV2", 3.0)
+
 var BatchUpdateEnabled = false
 var BatchUpdateInterval = env.Int("BATCH_UPDATE_INTERVAL", 5)
 

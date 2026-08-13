@@ -9,6 +9,9 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,24 +33,61 @@ func (r *CountingReader) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
-var (
-	cases = []struct {
+// cases 使用本地 fixture（testdata/）而非外部 URL，测试不依赖网络。
+// 各 fixture 由 scripts/gen-fixtures.py 生成，尺寸即文件名对应值。
+var cases = []struct {
+	file   string
+	format string
+	width  int
+	height int
+}{
+	{"boardwalk.jpeg", "jpeg", 640, 360},
+	{"basshunter.png", "png", 100, 80},
+	{"somethingness.webp", "webp", 90, 60},
+	{"sandberg.gif", "gif", 50, 40},
+	{"cervus.jpeg", "jpeg", 270, 230},
+}
+
+// localServer 用 httptest 在本地提供 testdata/ 目录下的图片，
+// 让依赖 URL 的用例（GetImageSizeFromUrl 等）不需要外网。
+var localServer *httptest.Server
+
+func TestMain(m *testing.M) {
+	client.Init()
+	localServer = httptest.NewServer(http.FileServer(http.Dir("testdata")))
+	code := m.Run()
+	localServer.Close()
+	os.Exit(code)
+}
+
+func caseURLs() []struct {
+	url    string
+	format string
+	width  int
+	height int
+} {
+	out := make([]struct {
 		url    string
 		format string
 		width  int
 		height int
-	}{
-		{"https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg", "jpeg", 2560, 1669},
-		{"https://upload.wikimedia.org/wikipedia/commons/9/97/Basshunter_live_performances.png", "png", 4500, 2592},
-		{"https://upload.wikimedia.org/wikipedia/commons/c/c6/TO_THE_ONE_SOMETHINGNESS.webp", "webp", 984, 985},
-		{"https://upload.wikimedia.org/wikipedia/commons/d/d0/01_Das_Sandberg-Modell.gif", "gif", 1917, 1533},
-		{"https://upload.wikimedia.org/wikipedia/commons/6/62/102Cervus.jpg", "jpeg", 270, 230},
+	}, 0, len(cases))
+	for _, c := range cases {
+		out = append(out, struct {
+			url    string
+			format string
+			width  int
+			height int
+		}{localServer.URL + "/" + c.file, c.format, c.width, c.height})
 	}
-)
+	return out
+}
 
-func TestMain(m *testing.M) {
-	client.Init()
-	m.Run()
+// 直接读取本地 fixture，供 base64 / decode 用例使用，不经过网络。
+func readFixture(t *testing.T, file string) []byte {
+	data, err := os.ReadFile(filepath.Join("testdata", file))
+	assert.NoError(t, err)
+	return data
 }
 
 func TestDecode(t *testing.T) {
@@ -57,7 +97,7 @@ func TestDecode(t *testing.T) {
 	// webp: 99529
 	// gif: 956153
 	// jpeg#01: 32805
-	for _, c := range cases {
+	for _, c := range caseURLs() {
 		t.Run("Decode:"+c.format, func(t *testing.T) {
 			resp, err := http.Get(c.url)
 			assert.NoError(t, err)
@@ -79,7 +119,7 @@ func TestDecode(t *testing.T) {
 	// webp: 4096
 	// gif: 4096
 	// jpeg#01: 4096
-	for _, c := range cases {
+	for _, c := range caseURLs() {
 		t.Run("DecodeConfig:"+c.format, func(t *testing.T) {
 			resp, err := http.Get(c.url)
 			assert.NoError(t, err)
@@ -104,11 +144,7 @@ func TestBase64(t *testing.T) {
 	// jpeg#01: 32805
 	for _, c := range cases {
 		t.Run("Decode:"+c.format, func(t *testing.T) {
-			resp, err := http.Get(c.url)
-			assert.NoError(t, err)
-			defer resp.Body.Close()
-			data, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			data := readFixture(t, c.file)
 			encoded := base64.StdEncoding.EncodeToString(data)
 			body := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
 			reader := &CountingReader{reader: body}
@@ -130,11 +166,7 @@ func TestBase64(t *testing.T) {
 	// jpeg#01: 3840
 	for _, c := range cases {
 		t.Run("DecodeConfig:"+c.format, func(t *testing.T) {
-			resp, err := http.Get(c.url)
-			assert.NoError(t, err)
-			defer resp.Body.Close()
-			data, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			data := readFixture(t, c.file)
 			encoded := base64.StdEncoding.EncodeToString(data)
 			body := base64.NewDecoder(base64.StdEncoding, strings.NewReader(encoded))
 			reader := &CountingReader{reader: body}
@@ -149,7 +181,7 @@ func TestBase64(t *testing.T) {
 }
 
 func TestGetImageSize(t *testing.T) {
-	for i, c := range cases {
+	for i, c := range caseURLs() {
 		t.Run("Decode:"+strconv.Itoa(i), func(t *testing.T) {
 			width, height, err := img.GetImageSize(c.url)
 			assert.NoError(t, err)
@@ -162,11 +194,7 @@ func TestGetImageSize(t *testing.T) {
 func TestGetImageSizeFromBase64(t *testing.T) {
 	for i, c := range cases {
 		t.Run("Decode:"+strconv.Itoa(i), func(t *testing.T) {
-			resp, err := http.Get(c.url)
-			assert.NoError(t, err)
-			defer resp.Body.Close()
-			data, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
+			data := readFixture(t, c.file)
 			encoded := base64.StdEncoding.EncodeToString(data)
 			width, height, err := img.GetImageSizeFromBase64(encoded)
 			assert.NoError(t, err)

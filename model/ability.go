@@ -18,7 +18,7 @@ type Ability struct {
 	Priority  *int64 `json:"priority" gorm:"bigint;default:0;index"`
 }
 
-func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
+func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool, excludeOwnerId int) (*Channel, error) {
 	groupCol := "`group`"
 	trueVal := "1"
 	if common.UsingPostgreSQL {
@@ -27,7 +27,7 @@ func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority b
 	}
 
 	// neo-matrix: cost-optimal routing (DB path, when MEMORY_CACHE_ENABLED=false).
-	// Pull all enabled candidates for (group, model) and pick the cheapest in the top priority tier.
+	// Pull all enabled candidates for (group, model) and weighted-pick the top priority tier.
 	var abilities []Ability
 	query := DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
 	if err := query.Find(&abilities).Error; err != nil {
@@ -46,30 +46,14 @@ func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority b
 		return &channel, nil
 	}
 
-	if ignoreFirstPriority {
-		// retry: skip the failed top priority tier, pick from lower tiers
-		maxPriority := *abilities[0].Priority
-		for i := 1; i < len(abilities); i++ {
-			if *abilities[i].Priority > maxPriority {
-				maxPriority = *abilities[i].Priority
-			}
-		}
-		for i := range abilities {
-			if *abilities[i].Priority < maxPriority {
-				return loadChannel(abilities[i])
-			}
-		}
-		return nil, fmt.Errorf("no lower priority channel found for model %s", model)
-	}
-
-	// normal: top priority tier, cheapest cost wins
+	// 拉取 top tier 全部渠道，供加权随机（与内存路径一致）
 	maxPriority := *abilities[0].Priority
 	for i := 1; i < len(abilities); i++ {
 		if *abilities[i].Priority > maxPriority {
 			maxPriority = *abilities[i].Priority
 		}
 	}
-	var cheapest *Channel
+	topChannels := make([]*Channel, 0, len(abilities))
 	for i := range abilities {
 		if *abilities[i].Priority != maxPriority {
 			continue
@@ -78,14 +62,30 @@ func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority b
 		if err != nil {
 			return nil, err
 		}
-		if cheapest == nil || channel.EffectiveCost(model) < cheapest.EffectiveCost(model) {
-			cheapest = channel
-		}
+		topChannels = append(topChannels, channel)
 	}
-	if cheapest == nil {
+	if len(topChannels) == 0 {
 		return nil, fmt.Errorf("no enabled channel found for model %s in group %s", model, group)
 	}
-	return cheapest, nil
+
+	if ignoreFirstPriority {
+		// retry: skip the failed top priority tier, pick from lower tiers
+		for i := range abilities {
+			if *abilities[i].Priority < maxPriority {
+				channel, err := loadChannel(abilities[i])
+				if err != nil {
+					return nil, err
+				}
+				if excludeOwnerId <= 0 || channel.OwnerId != excludeOwnerId {
+					return channel, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("no lower priority channel found for model %s", model)
+	}
+
+	// normal: weighted pick within the top priority tier (cost+trust aware)
+	return weightedPick(topChannels, model, excludeOwnerId)
 }
 
 func (channel *Channel) AddAbilities() error {

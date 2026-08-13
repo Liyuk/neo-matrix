@@ -14,6 +14,13 @@ const QuotaToRMB = 7.0 / 500000
 // SettlementPeriod 结算周期（默认按天）。
 const SettlementPeriodDay = 86400 // seconds
 
+// settlementReconcileThresholdRatio 对账偏差阈值比例：used_quota 增量与日志总量偏差超过
+// 该比例×日志量即判异常。容忍 cost_quota 图片/音频口径差异与批量更新滞后。
+const settlementReconcileThresholdRatio = 0.2
+
+// settlementTrustDegradeAfter 连续对账异常达到该次数时降低渠道信任等级。
+const settlementTrustDegradeAfter = 2
+
 // SettlementItem 单条聚合结果：某渠道在某周期的消费汇总。
 type SettlementItem struct {
 	ChannelId int
@@ -81,6 +88,10 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		}
 		platformQuota := item.TotalQuota - revenueQuota
 
+		// 对账：本周期内 channel.used_quota 增量 vs 本周期消费日志总量。
+		// 用上一周期结算快照 used_quota_end 求增量（used_quota 是累计值，不能直接比）。
+		mismatch := reconcileChannelUsage(item.ChannelId, channel.UsedQuota, periodStart, periodEnd)
+
 		// 幂等检查：同周期同渠道已存在则更新
 		var existing Settlement
 		err = DB.Where("period_start = ? AND period_end = ? AND channel_id = ?", periodStart, periodEnd, item.ChannelId).First(&existing).Error
@@ -94,22 +105,35 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 			RevenueQuota:  revenueQuota,
 			PlatformQuota: platformQuota,
 			Status:        SettlementStatusPending,
+			UsedQuotaEnd:  channel.UsedQuota,
 			CreatedTime:   time.Now().Unix(),
+		}
+		if mismatch {
+			settlement.Status = SettlementStatusMismatch
 		}
 		if err == nil {
 			// 已存在：若已确认/已入账则跳过，否则更新为最新聚合值
 			if existing.Status >= SettlementStatusConfirmed {
 				continue
 			}
+			// 新判为异常，且此前不是异常 → 触发降权（重跑已异常记录不重复降权）
+			if mismatch && existing.Status != SettlementStatusMismatch {
+				degradeChannelTrust(item.ChannelId, periodEnd)
+			}
 			settlement.Id = existing.Id
-			if err := DB.Model(&Settlement{}).Where("id = ?", existing.Id).Updates(map[string]interface{}{
+			updates := map[string]interface{}{
 				"total_quota":    item.TotalQuota,
 				"cost_quota":     item.CostQuota,
 				"revenue_quota":  revenueQuota,
 				"platform_quota": platformQuota,
+				"used_quota_end": channel.UsedQuota,
 				"status":         SettlementStatusPending,
 				"created_time":   time.Now().Unix(),
-			}).Error; err != nil {
+			}
+			if mismatch {
+				updates["status"] = SettlementStatusMismatch
+			}
+			if err := DB.Model(&Settlement{}).Where("id = ?", existing.Id).Updates(updates).Error; err != nil {
 				return count, err
 			}
 			count++
@@ -118,11 +142,74 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		if err := DB.Create(&settlement).Error; err != nil {
 			return count, err
 		}
-		// 计入结算中余额
+		// 新创建且判为异常 → 触发降权（幂等：create 只发生一次，重跑走 update 分支不再降）
+		if mismatch {
+			degradeChannelTrust(item.ChannelId, periodEnd)
+		}
+		// 计入结算中余额（对账异常时仍计入，由管理员人工处置/对账降权触发）
 		_ = UpdateSupplierBalance(supplier.UserId, revenueQuota, "settling")
 		count++
 	}
 	return count, nil
+}
+
+// reconcileChannelUsage 对账：本周期内某渠道实际消费（logs 聚合）与 used_quota 增量是否一致。
+// 判定：从上一周期该渠道的结算快照 used_quota_end 出发，计算 used_quota 增量，
+// 与周期内日志 SUM(quota) 比对，偏差超过阈值（settlementReconcileThresholdRatio × 日志量）判为异常。
+// 无上一周期快照（首次结算）时不做对账（无法取增量基准）。
+func reconcileChannelUsage(channelId int, currentUsedQuota int64, periodStart int64, periodEnd int64) bool {
+	// 上一周期结算单（取最近一条已存在的时间上早于本周期的）
+	var prev Settlement
+	err := DB.Where("channel_id = ? AND period_end <= ?", channelId, periodStart).
+		Order("period_end desc").First(&prev).Error
+	if err != nil || prev.Id == 0 || prev.UsedQuotaEnd == 0 {
+		return false // 无基准，不对账
+	}
+	delta := currentUsedQuota - prev.UsedQuotaEnd
+	if delta < 0 {
+		// used_quota 倒退异常（如渠道重置），直接判异常
+		return true
+	}
+	// 本周期日志总量（re-query，聚合在 items 里没带过来）
+	var totalLogQuota int64
+	LOG_DB.Table("logs").
+		Select("COALESCE(SUM(quota),0)").
+		Where("channel_id = ? AND type = ? AND created_at >= ? AND created_at < ?", channelId, LogTypeConsume, periodStart, periodEnd).
+		Scan(&totalLogQuota)
+	// 口径容忍：cost_quota 仅文本请求准确，但 used_quota 增量为全口径（含图片/音频）。
+	// 用比例阈值：偏差超过日志量的 20% 判异常，避免批量更新滞后导致的误判。
+	threshold := int64(float64(totalLogQuota) * settlementReconcileThresholdRatio)
+	if threshold < 100 {
+		threshold = 100 // 最小绝对阈值，防极小量时误判
+	}
+	diff := delta - totalLogQuota
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff > threshold
+}
+
+// degradeChannelTrust 对账异常时降低渠道信任等级（只降不升）。
+// 连续 settlementTrustDegradeAfter 个周期异常才降一次，防止偶发口径差异误降。
+// 降权后渠道在路由加权随机里的选中概率降低；连续异常累计到阈值会一路降到 1。
+func degradeChannelTrust(channelId int, periodEnd int64) {
+	// 统计之前的异常周期数（当前这条尚未落库，+1 计入）。达到阈值才降一次权。
+	var prevCount int64
+	DB.Model(&Settlement{}).
+		Where("channel_id = ? AND status = ? AND period_end < ?", channelId, SettlementStatusMismatch, periodEnd).
+		Count(&prevCount)
+	if prevCount+1 < settlementTrustDegradeAfter {
+		return
+	}
+	// 降 TrustLevel（最低 1）。降到 1 后不再更低。
+	err := DB.Model(&Channel{}).Where("id = ?", channelId).
+		Update("trust_level", gorm.Expr("MAX(trust_level - 1, 1)")).Error
+	if err != nil {
+		log.Printf("settlement: failed to degrade trust for channel %d: %v", channelId, err)
+		return
+	}
+	// 刷新路由缓存，让降权即时生效
+	InitChannelCache()
 }
 
 // GetSettlementsBySupplier 某供给方的结算记录
