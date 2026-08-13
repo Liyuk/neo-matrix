@@ -249,8 +249,15 @@ func setDBConns(db *gorm.DB) *sql.DB {
 		return nil
 	}
 
-	sqlDB.SetMaxIdleConns(env.Int("SQL_MAX_IDLE_CONNS", 100))
-	sqlDB.SetMaxOpenConns(env.Int("SQL_MAX_OPEN_CONNS", 1000))
+	if common.UsingSQLite {
+		// SQLite 单写者：并发连接会大量锁库（database is locked）。压到 1 写连接。
+		// 通过 SQL_MAX_OPEN_CONNS 仍可覆盖（如需更高吞吐请用 MySQL/PostgreSQL）。
+		sqlDB.SetMaxOpenConns(env.Int("SQL_MAX_OPEN_CONNS", 1))
+		sqlDB.SetMaxIdleConns(env.Int("SQL_MAX_IDLE_CONNS", 1))
+	} else {
+		sqlDB.SetMaxIdleConns(env.Int("SQL_MAX_IDLE_CONNS", 100))
+		sqlDB.SetMaxOpenConns(env.Int("SQL_MAX_OPEN_CONNS", 1000))
+	}
 	sqlDB.SetConnMaxLifetime(time.Second * time.Duration(env.Int("SQL_MAX_LIFETIME", 60)))
 	return sqlDB
 }

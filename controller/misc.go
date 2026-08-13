@@ -9,6 +9,7 @@ import (
 	"github.com/neo-matrix/neo-matrix/common"
 	"github.com/neo-matrix/neo-matrix/common/config"
 	"github.com/neo-matrix/neo-matrix/common/i18n"
+	"github.com/neo-matrix/neo-matrix/common/logger"
 	"github.com/neo-matrix/neo-matrix/common/message"
 	"github.com/neo-matrix/neo-matrix/model"
 
@@ -223,10 +224,30 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	common.DeleteKey(req.Email, common.PasswordResetPurpose)
+	// 新密码通过邮件发送，不在响应体返回明文（防中间人/日志泄露）
+	subject := fmt.Sprintf("%s 密码已重置", config.SystemName)
+	content := message.EmailTemplate(
+		subject,
+		fmt.Sprintf(`
+			<p>您好！</p>
+			<p>您的 %s 密码已重置，新密码为：</p>
+			<p style="font-size: 20px; font-weight: bold;">%s</p>
+			<p>请登录后立即修改密码。</p>
+		`, config.SystemName, password),
+	)
+	emailErr := message.SendEmail(subject, req.Email, content)
+	if emailErr != nil {
+		// 邮件发送失败时不返回明文，提示联系管理员（安全优先）
+		logger.SysError("failed to send reset password email: " + emailErr.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "密码已重置，但邮件发送失败，请联系管理员获取新密码",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "",
-		"data":    password,
+		"message": "密码已重置，请查收邮件",
 	})
 	return
 }

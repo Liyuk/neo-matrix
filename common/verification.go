@@ -19,7 +19,9 @@ const (
 
 var verificationMutex sync.Mutex
 var verificationMap map[string]verificationValue
-var verificationMapMaxSize = 10
+// 内存容量上限。原值 10 太小：并发验证码请求会逐出合法验证码。
+// 生产高并发建议迁移 Redis（当前用足够大的内存容量 + 过期清理兜底）。
+var verificationMapMaxSize = 1000
 var VerificationValidMinutes = 10
 
 func GenerateVerificationCode(length int) string {
@@ -39,7 +41,23 @@ func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
 		time: time.Now(),
 	}
 	if len(verificationMap) > verificationMapMaxSize {
+		// 容量超限：先清过期，若仍超则删除最旧的一条（保最新合法验证码）
 		removeExpiredPairs()
+		if len(verificationMap) > verificationMapMaxSize {
+			var oldestKey string
+			var oldestTime time.Time
+			first := true
+			for k, v := range verificationMap {
+				if first || v.time.Before(oldestTime) {
+					oldestKey = k
+					oldestTime = v.time
+					first = false
+				}
+			}
+			if oldestKey != "" {
+				delete(verificationMap, oldestKey)
+			}
+		}
 	}
 }
 

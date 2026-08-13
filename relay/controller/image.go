@@ -211,14 +211,17 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		if quota != 0 {
 			tokenName := c.GetString(ctxkey.TokenName)
 			logContent := fmt.Sprintf("倍率：%.2f × %.2f", modelRatio, groupRatio)
+			// neo-matrix: 图片请求成本价 = 零售 quota × 渠道成本倍率（与文本口径一致，供分成结算）
+			costQuota := computeNonTextCostQuota(meta.ChannelId, imageModel, quota)
 			model.RecordConsumeLog(ctx, &model.Log{
 				UserId:           meta.UserId,
 				ChannelId:        meta.ChannelId,
 				PromptTokens:     0,
 				CompletionTokens: 0,
-				ModelName:        imageRequest.Model,
+				ModelName:        imageModel,
 				TokenName:        tokenName,
 				Quota:            int(quota),
+				CostQuota:        costQuota,
 				Content:          logContent,
 			})
 			model.UpdateUserUsedQuotaAndRequestCount(meta.UserId, quota)

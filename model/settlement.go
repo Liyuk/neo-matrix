@@ -95,6 +95,18 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		// 幂等检查：同周期同渠道已存在则更新
 		var existing Settlement
 		err = DB.Where("period_start = ? AND period_end = ? AND channel_id = ?", periodStart, periodEnd, item.ChannelId).First(&existing).Error
+		// 重叠防重：若该渠道已有"周期边界不同但时间上重叠"的结算单，跳过本单，
+		// 防止同一批日志被重叠周期重复结算/重复入账。
+		if err != nil {
+			var overlapping int64
+			DB.Model(&Settlement{}).
+				Where("channel_id = ? AND period_start < ? AND period_end > ?", item.ChannelId, periodEnd, periodStart).
+				Count(&overlapping)
+			if overlapping > 0 {
+				log.Printf("settlement: skip channel %d period [%d,%d) - overlaps existing settlement", item.ChannelId, periodStart, periodEnd)
+				continue
+			}
+		}
 		settlement := Settlement{
 			PeriodStart:   periodStart,
 			PeriodEnd:     periodEnd,
@@ -240,17 +252,34 @@ func GetAllSettlements() ([]*Settlement, error) {
 }
 
 // SettlementLoop 后台周期结算任务。
+// 按"上次结束点"推进窗口，保证连续覆盖不重不漏：
+// - 正常：每 frequencySeconds 结算 [lastEnd, lastEnd+frequency)。
+// - 漂移/暂停：若上次执行耗时或进程暂停，窗口仍从 lastEnd 起，不产生 gap；
+//   若落后超过一个周期，一次性追平到当前时间（backfill），避免日志永不结算。
 func SettlementLoop(frequencySeconds int) {
 	if frequencySeconds <= 0 {
 		frequencySeconds = SettlementPeriodDay
 	}
+	var lastEnd int64
+	first := true
 	for {
-		now := time.Now()
-		// 结算上一完整周期 [start, now)
-		start := now.Unix() - int64(frequencySeconds)
-		_, err := GenerateSettlement(start, now.Unix())
-		if err != nil {
-			log.Printf("settlement error: %v", err)
+		now := time.Now().Unix()
+		if first {
+			// 首次启动：结算启动前最近一个完整周期 [now-freq, now)
+			lastEnd = now - int64(frequencySeconds)
+			first = false
+		}
+		// 落后则一次追平到 now（backfill 多个缺口），不重不漏
+		for lastEnd < now {
+			end := lastEnd + int64(frequencySeconds)
+			if end > now {
+				end = now
+			}
+			_, err := GenerateSettlement(lastEnd, end)
+			if err != nil {
+				log.Printf("settlement error: %v", err)
+			}
+			lastEnd = end
 		}
 		time.Sleep(time.Duration(frequencySeconds) * time.Second)
 	}

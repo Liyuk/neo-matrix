@@ -18,6 +18,83 @@ import (
 	"github.com/neo-matrix/neo-matrix/common/helper"
 )
 
+// maxLogFileSize 单个日志文件大小上限（默认 50MB），超限自动切分，防磁盘写满。
+// 可用环境变量 LOG_MAX_SIZE_MB 覆盖。
+var maxLogFileSize int64 = func() int64 {
+	mb := envInt("LOG_MAX_SIZE_MB", 50)
+	if mb <= 0 {
+		mb = 50
+	}
+	return int64(mb) * 1024 * 1024
+}()
+
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	var n int
+	if _, err := fmt.Sscanf(v, "%d", &n); err != nil {
+		return def
+	}
+	return n
+}
+
+// rotatingFileWriter 按大小切分日志文件的 writer（标准库实现，无外部依赖）。
+type rotatingFileWriter struct {
+	mu       sync.Mutex
+	dir      string
+	baseName string // 如 oneapi-20260812
+	current  *os.File
+	size     int64
+}
+
+func newRotatingFileWriter(dir, baseName string) (*rotatingFileWriter, error) {
+	w := &rotatingFileWriter{dir: dir, baseName: baseName}
+	if err := w.rotate(); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+func (w *rotatingFileWriter) rotate() error {
+	// 打开当前文件（追加）
+	path := filepath.Join(w.dir, w.baseName+".log")
+	fd, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	if w.current != nil {
+		_ = w.current.Close()
+	}
+	w.current = fd
+	info, err := fd.Stat()
+	if err != nil {
+		w.size = 0
+	} else {
+		w.size = info.Size()
+	}
+	return nil
+}
+
+func (w *rotatingFileWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.size+int64(len(p)) > maxLogFileSize {
+		// 超过大小上限：重命名当前文件为 .1，开新文件
+		_ = w.current.Close()
+		old := filepath.Join(w.dir, w.baseName+".log")
+		newPath := filepath.Join(w.dir, w.baseName+".1.log")
+		_ = os.Rename(old, newPath)
+		if err := w.rotate(); err != nil {
+			return 0, err
+		}
+	}
+	n, err = w.current.Write(p)
+	w.size += int64(n)
+	return n, err
+}
+
 type loggerLevel string
 
 const (
@@ -33,18 +110,19 @@ var setupLogOnce sync.Once
 func SetupLogger() {
 	setupLogOnce.Do(func() {
 		if LogDir != "" {
-			var logPath string
+			var baseName string
 			if config.OnlyOneLogFile {
-				logPath = filepath.Join(LogDir, "oneapi.log")
+				baseName = "oneapi"
 			} else {
-				logPath = filepath.Join(LogDir, fmt.Sprintf("oneapi-%s.log", time.Now().Format("20060102")))
+				baseName = fmt.Sprintf("oneapi-%s", time.Now().Format("20060102"))
 			}
-			fd, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			// 按大小轮转的 writer，防日志单文件无限增长写满磁盘
+			rw, err := newRotatingFileWriter(LogDir, baseName)
 			if err != nil {
 				log.Fatal("failed to open log file")
 			}
-			gin.DefaultWriter = io.MultiWriter(os.Stdout, fd)
-			gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, fd)
+			gin.DefaultWriter = io.MultiWriter(os.Stdout, rw)
+			gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, rw)
 		}
 	})
 }

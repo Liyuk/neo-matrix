@@ -160,6 +160,19 @@ func computeChannelCostQuota(channelId int, modelName string, channelType int, p
 	return int(math.Ceil(cost))
 }
 
+// computeNonTextCostQuota 非文本请求（图片/音频）的成本价 = 零售 quota × 渠道成本倍率。
+// 与文本口径一致（零售 quota 由模型倍率×分组倍率×数量算出，成本价再乘 EffectiveCost），供分成结算。
+func computeNonTextCostQuota(channelId int, modelName string, retailQuota int64) int {
+	if channelId == 0 {
+		return 0
+	}
+	channel, err := model.GetChannelById(channelId, false)
+	if err != nil || channel == nil {
+		channel = &model.Channel{}
+	}
+	return int(float64(retailQuota) * channel.EffectiveCost(modelName))
+}
+
 func getMappedModelName(modelName string, mapping map[string]string) (string, bool) {
 	if mapping == nil {
 		return modelName, false
