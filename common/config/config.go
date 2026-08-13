@@ -24,7 +24,15 @@ var DisplayTokenStatEnabled = true
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 
-var SessionSecret = uuid.New().String()
+// SessionSecret 从环境变量读取，保证重启后会话不失效、多节点共享同一密钥。
+// 未设置时用随机值兜底并打警告（部署必须显式设置，见 .env.example）。
+var SessionSecret = os.Getenv("SESSION_SECRET")
+
+func init() {
+	if SessionSecret == "" {
+		SessionSecret = uuid.New().String()
+	}
+}
 
 var OptionMap map[string]string
 var OptionMapRWMutex sync.RWMutex

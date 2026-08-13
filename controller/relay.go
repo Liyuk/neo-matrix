@@ -35,6 +35,19 @@ func relayHelper(c *gin.Context, relayMode int) *model.ErrorWithStatusCode {
 	case relaymode.AudioTranscription:
 		err = controller.RelayAudioHelper(c, relayMode)
 	case relaymode.Proxy:
+		// 代理转发仅限管理员：该路径无计费/日志，若开放给普通用户可免费绕过付费墙
+		userId := c.GetInt(ctxkey.Id)
+		if !dbmodel.IsAdmin(userId) {
+			err = &model.ErrorWithStatusCode{
+				StatusCode: http.StatusForbidden,
+				Error: model.Error{
+					Message: "代理转发仅限管理员使用",
+					Type:    "forbidden",
+					Code:    "forbidden",
+				},
+			}
+			return err
+		}
 		err = controller.RelayProxyHelper(c, relayMode)
 	default:
 		err = controller.RelayTextHelper(c)

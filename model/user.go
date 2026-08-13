@@ -34,7 +34,7 @@ const (
 type User struct {
 	Id               int    `json:"id"`
 	Username         string `json:"username" gorm:"unique;index" validate:"max=12"`
-	Password         string `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	Password         string `json:"password,omitempty" gorm:"not null;" validate:"min=8,max=20"`
 	DisplayName      string `json:"display_name" gorm:"index" validate:"max=20"`
 	Role             int    `json:"role" gorm:"type:int;default:1"`   // admin, util
 	Status           int    `json:"status" gorm:"type:int;default:1"` // enabled, disabled
@@ -44,7 +44,7 @@ type User struct {
 	LarkId           string `json:"lark_id" gorm:"column:lark_id;index"`
 	OidcId           string `json:"oidc_id" gorm:"column:oidc_id;index"`
 	VerificationCode string `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	AccessToken      string `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	AccessToken      string `json:"access_token,omitempty" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota            int64  `json:"quota" gorm:"bigint;default:0"`
 	UsedQuota        int64  `json:"used_quota" gorm:"bigint;default:0;column:used_quota"` // used quota
 	RequestCount     int    `json:"request_count" gorm:"type:int;default:0;"`             // request number
@@ -60,7 +60,7 @@ func GetMaxUserId() int {
 }
 
 func GetAllUsers(startIdx int, num int, order string) (users []*User, err error) {
-	query := DB.Limit(num).Offset(startIdx).Omit("password").Where("status != ?", UserStatusDeleted)
+	query := DB.Limit(num).Offset(startIdx).Omit("password", "access_token").Where("status != ?", UserStatusDeleted)
 
 	switch order {
 	case "quota":
@@ -79,9 +79,9 @@ func GetAllUsers(startIdx int, num int, order string) (users []*User, err error)
 
 func SearchUsers(keyword string) (users []*User, err error) {
 	if !common.UsingPostgreSQL {
-		err = DB.Omit("password").Where("id = ? or username LIKE ? or email LIKE ? or display_name LIKE ?", keyword, keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
+		err = DB.Omit("password", "access_token").Where("id = ? or username LIKE ? or email LIKE ? or display_name LIKE ?", keyword, keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
 	} else {
-		err = DB.Omit("password").Where("username LIKE ? or email LIKE ? or display_name LIKE ?", keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
+		err = DB.Omit("password", "access_token").Where("username LIKE ? or email LIKE ? or display_name LIKE ?", keyword+"%", keyword+"%", keyword+"%").Find(&users).Error
 	}
 	return users, err
 }
@@ -399,8 +399,16 @@ func DecreaseUserQuota(id int, quota int64) (err error) {
 }
 
 func decreaseUserQuota(id int, quota int64) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	return err
+	// 条件更新防并发扣成负数：仅当余额足够才扣，RowsAffected==0 视为额度不足
+	result := DB.Model(&User{}).Where("id = ? AND quota >= ?", id, quota).
+		Update("quota", gorm.Expr("quota - ?", quota))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("用户额度不足")
+	}
+	return nil
 }
 
 func GetRootUserEmail() (email string) {

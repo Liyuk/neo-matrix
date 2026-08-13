@@ -55,8 +55,8 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
-            ${{ contains(github.ref, 'alpha') && 'justsong/one-api-alpha' || 'justsong/one-api' }}
-            ${{ contains(github.ref, 'alpha') && format('ghcr.io/{0}-alpha', github.repository) || format('ghcr.io/{0}', github.repository) }}
+            liyuk/neo-matrix
+            ${{ format('ghcr.io/{0}', github.repository) }}
 
       - name: Build and push Docker images
         uses: docker/build-push-action@v3

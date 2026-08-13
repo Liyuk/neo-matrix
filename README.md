@@ -55,23 +55,31 @@ _✨ 共享 AI 中转站：把闲置 API Key 汇成一个入口，按用量给�
 
 ## 快速开始
 
-```sh
-# 后端
-cp .env.example .env   # 按需修改 SESSION_SECRET 等
-go run .               # 或 ./bin/neo-matrix
+> ⚠️ 前端构建产物不随仓库提交（`web/build` 被 gitignore），**首次运行必须先构建前端**，否则 `go run .` 会因缺少 `web/build` 无法启动。
 
-# 前端（可选，默认用预构建产物）
+```sh
+# 1. 构建前端（必须，见上方警告）
 cd web/default
 npm install
 npm run build
+cd ../..
+
+# 2. 配置并启动后端
+cp .env.example .env   # 必须设置 SESSION_SECRET（openssl rand -hex 32）
+go run .               # 或 ./bin/neo-matrix
 ```
 
-启动后访问 `http://localhost:3000`，默认管理员账号见 `.env.example`（首次启动自动创建 root 用户）。
+启动后访问 `http://localhost:3000`，默认管理员账号见 `.env.example`（首次启动自动创建 root 用户，密码 123456，**上线请立即修改**）。
+
+> 离线/内网部署：设置 `TIKTOKEN_CACHE_DIR` 离线缓存词表，见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ## 文档
 
-- [改造架构](docs/ARCHITECTURE.md)
-- 分阶段计划、数据表设计、路由/计费机制详解
+- [改造架构](docs/ARCHITECTURE.md) — 分阶段计划、数据表设计、路由/计费机制详解
+- [平台规则](docs/rules/RULES.md) — 供给方准入/结算/提现/违规处罚(运营规范)
+- [部署指南](docs/DEPLOYMENT.md) — 单机/生产/离线/升级/故障排查
+- [可行性评估](docs/FEASIBILITY.md) — 竞品/合规/风险清单
+- [供给侧定价标准](docs/SUPPLIER_PRICING.md)
 
 ## License
 

@@ -52,7 +52,16 @@ func IsSupplier(userId int) bool {
 	return err == nil && supplier != nil && supplier.Status == SupplierStatusEnabled
 }
 
+// GetAllSuppliers 所有供给方（管理端审核/列表用）。
+func GetAllSuppliers() ([]*Supplier, error) {
+	var suppliers []*Supplier
+	err := DB.Order("id desc").Find(&suppliers).Error
+	return suppliers, err
+}
+
 // ApplySupplier 申请成为供给方。已存在则直接返回，幂等。
+// 新申请默认待审核（Status=Frozen），管理员批准后才可提交 Key/参与分成，
+// 防止任意注册用户滥用供给方能力（SSRF/套利）。
 func ApplySupplier(userId int) (*Supplier, error) {
 	if existing, err := GetSupplierByUserId(userId); err == nil && existing != nil {
 		return existing, nil
@@ -60,7 +69,7 @@ func ApplySupplier(userId int) (*Supplier, error) {
 	now := time.Now().Unix()
 	supplier := Supplier{
 		UserId:      userId,
-		Status:      SupplierStatusEnabled,
+		Status:      SupplierStatusFrozen, // 待管理员审核
 		CreatedTime: now,
 		UpdatedTime: now,
 	}
@@ -95,12 +104,39 @@ func UpdateSupplierTrust(userId int, level int, operatorId int) error {
 		}).Error
 }
 
-// RequestWithdrawal 提现：从可提现余额扣减。返回当前余额是否足够。
+// UpdateSupplierStatus 审核供给方申请：status=1 通过 / status=2 冻结拒绝。返回供给方。
+func UpdateSupplierStatus(userId int, status int) (*Supplier, error) {
+	if status != SupplierStatusEnabled && status != SupplierStatusFrozen {
+		return nil, fmt.Errorf("非法的供给方状态：%d", status)
+	}
+	err := DB.Model(&Supplier{}).Where("user_id = ?", userId).
+		Updates(map[string]interface{}{
+			"status":       status,
+			"updated_time": time.Now().Unix(),
+		}).Error
+	if err != nil {
+		return nil, err
+	}
+	return GetSupplierByUserId(userId)
+}
+
+// RequestWithdrawal 提现：从可提现余额原子扣减。
+// 用条件 UPDATE（余额足够才扣）避免并发请求都通过读到的旧余额 → 透支提现。
+// 返回错误：余额不足或扣减失败。
 func (s *Supplier) RequestWithdrawal(amount int) error {
-	if s.WithdrawBalance < amount {
+	if amount <= 0 {
+		return fmt.Errorf("提现金额必须大于 0")
+	}
+	result := DB.Model(&Supplier{}).
+		Where("user_id = ? AND withdraw_balance >= ?", s.UserId, amount).
+		Update("withdraw_balance", gorm.Expr("withdraw_balance - ?", amount))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
 		return fmt.Errorf("可提现余额不足：现有 %d，需 %d", s.WithdrawBalance, amount)
 	}
-	return UpdateSupplierBalance(s.UserId, -amount, "withdraw")
+	return nil
 }
 
 // Settlement 分成结算单。按周期聚合某渠道的消费日志生成。
@@ -166,7 +202,11 @@ func GetAllWithdrawals() ([]*Withdrawal, error) {
 }
 
 // ProcessWithdrawal 处理提现：status=2 打款完成；status=3 驳回并退回可提现余额。
+// 用原子状态翻转（仅 pending 可被处理）避免并发重复处理导致双重退款/双重入账。
 func ProcessWithdrawal(id int, status int, reason string) error {
+	if status != WithdrawalStatusPaying && status != WithdrawalStatusPaid && status != WithdrawalStatusRejected {
+		return fmt.Errorf("非法的提现处理状态：%d", status)
+	}
 	var withdrawal Withdrawal
 	if err := DB.First(&withdrawal, "id = ?", id).Error; err != nil {
 		return err
@@ -176,6 +216,17 @@ func ProcessWithdrawal(id int, status int, reason string) error {
 	}
 	now := time.Now().Unix()
 	tx := DB.Begin()
+	// 原子抢状态：仅当仍为 pending 时翻转，并发时只有一个成功
+	result := tx.Model(&Withdrawal{}).Where("id = ? AND status = ?", id, WithdrawalStatusPending).
+		Updates(map[string]interface{}{"status": status, "reason": reason, "updated_time": now})
+	if result.Error != nil {
+		tx.Rollback()
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		tx.Rollback()
+		return fmt.Errorf("该提现已处理")
+	}
 	if status == WithdrawalStatusRejected {
 		// 驳回：退回余额
 		if err := tx.Model(&Supplier{}).Where("user_id = ?", withdrawal.UserId).
@@ -183,11 +234,6 @@ func ProcessWithdrawal(id int, status int, reason string) error {
 			tx.Rollback()
 			return err
 		}
-	}
-	if err := tx.Model(&Withdrawal{}).Where("id = ?", id).
-		Updates(map[string]interface{}{"status": status, "reason": reason, "updated_time": now}).Error; err != nil {
-		tx.Rollback()
-		return err
 	}
 	return tx.Commit().Error
 }

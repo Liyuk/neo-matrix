@@ -157,9 +157,14 @@ func TokenAuth() func(c *gin.Context) {
 			}
 		}
 
-		// set channel id for proxy relay
+		// set channel id for proxy relay（仅管理员可指定渠道，防普通用户/供给方绕过调度与套利防线）
 		if channelId := c.Param("channelid"); channelId != "" {
-			c.Set(ctxkey.SpecificChannelId, channelId)
+			if model.IsAdmin(token.UserId) {
+				c.Set(ctxkey.SpecificChannelId, channelId)
+			} else {
+				abortWithMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")
+				return
+			}
 		}
 
 		c.Next()

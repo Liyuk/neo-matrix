@@ -21,29 +21,35 @@ var defaultTokenEncoder *tiktoken.Tiktoken
 
 func InitTokenEncoders() {
 	logger.SysLog("initializing token encoders")
+	// 词表下载失败不再 FATAL：降级到近似计费，避免离线/内网/代理不可用时服务起不来。
+	// 生产建议设置 TIKTOKEN_CACHE_DIR 离线缓存词表（见 docs/DEPLOYMENT.md）。
 	gpt35TokenEncoder, err := tiktoken.EncodingForModel("gpt-3.5-turbo")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-3.5-turbo token encoder: %s, "+
-			"if you are using in offline environment, please set TIKTOKEN_CACHE_DIR to use exsited files, check this link for more information: https://stackoverflow.com/questions/76106366/how-to-use-tiktoken-in-offline-mode-computer ", err.Error()))
+		logger.SysError(fmt.Sprintf("failed to get gpt-3.5-turbo token encoder: %s, "+
+			"falling back to approximate token counting. set TIKTOKEN_CACHE_DIR to cache encodings for offline use.", err.Error()))
+		defaultTokenEncoder = nil
+		return
 	}
 	defaultTokenEncoder = gpt35TokenEncoder
 	gpt4oTokenEncoder, err := tiktoken.EncodingForModel("gpt-4o")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-4o token encoder: %s", err.Error()))
-	}
-	gpt4TokenEncoder, err := tiktoken.EncodingForModel("gpt-4")
-	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-4 token encoder: %s", err.Error()))
-	}
-	for model := range billingratio.ModelRatio {
-		if strings.HasPrefix(model, "gpt-3.5") {
-			tokenEncoderMap[model] = gpt35TokenEncoder
-		} else if strings.HasPrefix(model, "gpt-4o") {
-			tokenEncoderMap[model] = gpt4oTokenEncoder
-		} else if strings.HasPrefix(model, "gpt-4") {
-			tokenEncoderMap[model] = gpt4TokenEncoder
+		logger.SysError(fmt.Sprintf("failed to get gpt-4o token encoder: %s", err.Error()))
+	} else {
+		gpt4TokenEncoder, err := tiktoken.EncodingForModel("gpt-4")
+		if err != nil {
+			logger.SysError(fmt.Sprintf("failed to get gpt-4 token encoder: %s", err.Error()))
 		} else {
-			tokenEncoderMap[model] = nil
+			for model := range billingratio.ModelRatio {
+				if strings.HasPrefix(model, "gpt-3.5") {
+					tokenEncoderMap[model] = gpt35TokenEncoder
+				} else if strings.HasPrefix(model, "gpt-4o") {
+					tokenEncoderMap[model] = gpt4oTokenEncoder
+				} else if strings.HasPrefix(model, "gpt-4") {
+					tokenEncoderMap[model] = gpt4TokenEncoder
+				} else {
+					tokenEncoderMap[model] = nil
+				}
+			}
 		}
 	}
 	logger.SysLog("token encoders initialized")
@@ -67,6 +73,10 @@ func getTokenEncoder(model string) *tiktoken.Tiktoken {
 }
 
 func getTokenNum(tokenEncoder *tiktoken.Tiktoken, text string) int {
+	if tokenEncoder == nil {
+		// 词表未加载（离线降级）→ 用近似计数，避免 nil 解引用 panic
+		return int(float64(len(text)) * 0.38)
+	}
 	if config.ApproximateTokenEnabled {
 		return int(float64(len(text)) * 0.38)
 	}

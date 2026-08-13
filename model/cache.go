@@ -267,7 +267,8 @@ func pickCheapestInTopTier(channels []*Channel, model string, ignoreFirstPriorit
 		// retry: skip the failed top tier and pick from lower tiers（同样过滤供给方自营渠道）
 		lowerTier := filterOwner(channels, endIdx, len(channels), excludeOwnerId)
 		if len(lowerTier) == 0 {
-			lowerTier = channels[endIdx:]
+			// 低优先级 tier 全被过滤（都是该供给方自营）→ 拒绝自消费
+			return nil, errors.New("no channel available for this user")
 		}
 		return lowerTier[random.RandRange(0, len(lowerTier))], nil
 	}
@@ -304,9 +305,12 @@ func weightedPick(channels []*Channel, model string, excludeOwnerId int) (*Chann
 				filtered = append(filtered, ch)
 			}
 		}
-		if len(filtered) > 0 {
-			pickFrom = filtered
+		if len(filtered) == 0 {
+			// 全部渠道都是该供给方自己托管的 → 拒绝自消费（防套利）。
+			// 不回退到自营渠道：供给方不能用消费侧身份占用自己渠道的调度与分成。
+			return nil, errors.New("no channel available for this user")
 		}
+		pickFrom = filtered
 	}
 	weights := make([]float64, len(pickFrom))
 	for i, ch := range pickFrom {

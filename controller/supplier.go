@@ -2,8 +2,11 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -23,6 +26,67 @@ var supplierAllowedChannelTypes = map[int]bool{
 	channeltype.Anthropic:        true, // 18
 	channeltype.Gemini:           true, // 24
 	channeltype.DeepSeek:         true, // 40
+}
+
+// isPrivateIP 判断 IP 是否为私有/环回/链路本地/云 metadata（169.254.169.254）等不可达公网地址。
+// SSRF 防护：禁止平台服务器向内网/云 metadata 发起请求。
+func isPrivateIP(ip net.IP) bool {
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
+}
+
+// validateSupplierBaseURL SSRF 防护：供给方提交的 BaseURL 仅允许 https 与公网可达域名/IP，
+// 拒绝 http、私有 IP、环回、链路本地、云 metadata 地址。
+func validateSupplierBaseURL(baseURL string) error {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Errorf("无法解析 URL")
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("仅允许 https 协议")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("缺少主机名")
+	}
+	host := u.Hostname()
+	// 域名：解析所有 IP 校验无内网地址（防 DNS rebinding）
+	if ip := net.ParseIP(host); ip != nil {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("不允许指向内网或本机地址")
+		}
+		return nil
+	}
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("域名无法解析")
+	}
+	for _, a := range addrs {
+		if isPrivateIP(a) {
+			return fmt.Errorf("域名解析到内网或本机地址")
+		}
+	}
+	return nil
+}
+
+// validateModelCostRatio 校验 ModelCostRatio JSON：每个模型级成本倍率必须 ∈ [1.0, maxCostRatio]。
+// 返回归一化后的 JSON 字符串（若为空返回 "{}"）。防 per-model 套利绕过全局 CostRatio 上限。
+func validateModelCostRatio(raw string, maxCostRatio float64) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "{}", nil
+	}
+	m := make(map[string]float64)
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return "", fmt.Errorf("JSON 格式错误")
+	}
+	for model, ratio := range m {
+		if ratio < 1.0 {
+			return "", fmt.Errorf("模型 %s 成本倍率不得低于官方基准（1.0）", model)
+		}
+		if ratio > maxCostRatio {
+			return "", fmt.Errorf("模型 %s 成本倍率过高（上限 %.1f）", model, maxCostRatio)
+		}
+	}
+	return raw, nil
 }
 
 // SupplierApply 申请成为供给方（幂等）
@@ -65,39 +129,76 @@ func SupplierAddChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "请先申请成为供给方"})
 		return
 	}
-	channel := model.Channel{}
-	if err := c.ShouldBindJSON(&channel); err != nil {
+	// 白名单字段绑定：只允许供给方声明成本相关的字段，禁止请求体携带
+	// CostDeclStatus/TrustLevel/Priority/IsShared/SettleEnabled/Group 等服务端专属字段（防伪造审批状态/抢流量）。
+	var req struct {
+		Type           int     `json:"type"`
+		Name           string  `json:"name"`
+		Key            string  `json:"key"`
+		BaseURL        string  `json:"base_url"`
+		Models         string  `json:"models"`
+		ModelMapping   string  `json:"model_mapping"`
+		CostRatio      float64 `json:"cost_ratio"`
+		ModelCostRatio string  `json:"model_cost_ratio"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	// 白名单校验渠道类型
-	if !supplierAllowedChannelTypes[channel.Type] {
+	if !supplierAllowedChannelTypes[req.Type] {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "该渠道类型暂不支持供给方接入"})
 		return
 	}
 	// Key 必填
-	if strings.TrimSpace(channel.Key) == "" {
+	if strings.TrimSpace(req.Key) == "" {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "API Key 不能为空"})
 		return
+	}
+	// BaseURL SSRF 防护：仅允许 https 与已知上游域名，禁止私有/环回/链路本地/云 metadata 地址
+	if req.BaseURL != "" {
+		if err := validateSupplierBaseURL(req.BaseURL); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": "BaseURL 不合法：" + err.Error()})
+			return
+		}
 	}
 	// 成本倍率合法性：锚定官方价（ModelRatio），下限 1.0、上限 MAX_COST_RATIO（默认 3.0）。
 	// 见 docs/SUPPLIER_PRICING.md 标准 2：成本价不得低于官方零售基准（防低报抢量），也不得虚高（防抬结算）。
 	// 特殊例外：订阅转 API（P5 预留）等渠道成本基础可低于官方价，需走成本申报审批（CostDeclStatus=1），
 	// 审批核准前不放开成本下限约束。
-	if channel.CostRatio <= 0 {
-		channel.CostRatio = 1.0
+	costRatio := req.CostRatio
+	if costRatio <= 0 {
+		costRatio = 1.0
 	}
 	maxCostRatio := config.MaxCostRatio
 	if maxCostRatio <= 0 {
 		maxCostRatio = 3.0
 	}
-	if channel.CostRatio < 1.0 && channel.CostDeclStatus != model.CostDeclApproved {
+	if costRatio < 1.0 {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "成本倍率不得低于官方基准（1.0），请填写真实成本"})
 		return
 	}
-	if channel.CostRatio > maxCostRatio {
+	if costRatio > maxCostRatio {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": fmt.Sprintf("成本倍率过高（上限 %.1f），请填写真实成本", maxCostRatio)})
 		return
+	}
+	// ModelCostRatio 每个模型值同样强制 [1.0, MaxCostRatio]（防 per-model 套利绕过全局上限）
+	modelCostRatio, err := validateModelCostRatio(req.ModelCostRatio, maxCostRatio)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "模型成本倍率不合法：" + err.Error()})
+		return
+	}
+	channel := model.Channel{
+		Type:           req.Type,
+		Name:           req.Name,
+		Key:            req.Key,
+		Models:         req.Models,
+		ModelMapping:   &req.ModelMapping,
+		CostRatio:      costRatio,
+		ModelCostRatio: modelCostRatio,
+	}
+	if req.BaseURL != "" {
+		channel.BaseURL = &req.BaseURL
 	}
 	// 预校验：用临时 channel 跑一次测试请求
 	tmpChannel := channel
@@ -114,16 +215,14 @@ func SupplierAddChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Key 校验失败：" + msg})
 		return
 	}
-	// 组装为供给方托管渠道
+	// 组装为供给方托管渠道（服务端强制专属字段，请求体无法覆盖）
 	channel.OwnerId = userId
 	channel.IsShared = 1
 	channel.SettleEnabled = 1
 	channel.Status = model.ChannelStatusEnabled
-	channel.Group = "default" // 供给方渠道服务默认分组
-	channel.TrustLevel = 1    // 新渠道信任阶梯起步
-	if channel.CostDeclStatus == 0 {
-		channel.CostDeclStatus = model.CostDeclPending // 成本申报待审
-	}
+	channel.Group = "default"                  // 供给方渠道服务默认分组
+	channel.TrustLevel = 1                     // 新渠道信任阶梯起步
+	channel.CostDeclStatus = model.CostDeclPending // 成本申报待审（不可由请求体伪造为已核准）
 	channel.CreatedTime = helper.GetTimestamp()
 	if err := channel.Insert(); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -390,4 +489,40 @@ func AdminReviewCostDecl(c *gin.Context) {
 		model.InitChannelCache()
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "成本申报已处理"})
+}
+
+// AdminSuppliers 供给方列表（管理端审核申请用）。
+func AdminSuppliers(c *gin.Context) {
+	suppliers, err := model.GetAllSuppliers()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": suppliers})
+}
+
+// AdminUpdateSupplier 审核供给方申请：status=1 通过 / status=2 拒绝冻结。
+func AdminUpdateSupplier(c *gin.Context) {
+	userId, err := strconv.Atoi(c.Param("userId"))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	var req struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if req.Status != model.SupplierStatusEnabled && req.Status != model.SupplierStatusFrozen {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "状态仅支持通过(1)或拒绝(2)"})
+		return
+	}
+	supplier, err := model.UpdateSupplierStatus(userId, req.Status)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "供给方状态已更新", "data": supplier})
 }

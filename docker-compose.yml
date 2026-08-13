@@ -1,49 +1,51 @@
 version: '3.4'
 
+# Neo Matrix 单机部署（默认 SQLite，最简上手）
+# 生产高可用：取消下面 db/redis 服务的注释，并设置 SQL_DSN/REDIS_CONN_STRING
 services:
-  one-api:
-    image: "${REGISTRY:-docker.io}/justsong/one-api:latest"
-    container_name: one-api
+  neo-matrix:
+    build: .            # 构建本 fork 镜像（含供给方/结算功能）
+    image: neo-matrix:local
+    container_name: neo-matrix
     restart: always
     command: --log-dir /app/logs
     ports:
       - "3000:3000"
     volumes:
-      - ./data/oneapi:/data
+      - ./data:/data          # 持久化 SQLite + 配置
       - ./logs:/app/logs
     environment:
-      - SQL_DSN=oneapi:123456@tcp(db:3306)/one-api  # 修改此行，或注释掉以使用 SQLite 作为数据库
-      - REDIS_CONN_STRING=redis://redis
-      - SESSION_SECRET=random_string  # 修改为随机字符串
+      - SESSION_SECRET=change_me_to_random_string  # 必须修改！openssl rand -hex 32
       - TZ=Asia/Shanghai
-#      - NODE_TYPE=slave  # 多机部署时从节点取消注释该行
-#      - SYNC_FREQUENCY=60  # 需要定期从数据库加载数据时取消注释该行
-#      - FRONTEND_BASE_URL=https://openai.justsong.cn  # 多机部署时从节点取消注释该行
-    depends_on:
-      - redis
-      - db
+      # 离线/内网部署：预下载 tiktoken 词表后挂载
+      # - TIKTOKEN_CACHE_DIR=/data/tiktoken-cache
     healthcheck:
       test: [ "CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' | awk -F: '{print $2}'" ]
       interval: 30s
       timeout: 10s
       retries: 3
+    # ---- 生产多机方案（可选，取消注释并设置环境变量）----
+    # environment:
+    #   - SQL_DSN=neo-matrix:123456@tcp(db:3306)/neo-matrix
+    #   - REDIS_CONN_STRING=redis://redis
+    # depends_on:
+    #   - redis
+    #   - db
 
-  redis:
-    image: "${REGISTRY:-docker.io}/redis:latest"
-    container_name: redis
-    restart: always
+  # redis:
+  #   image: redis:latest
+  #   restart: always
 
-  db:
-    image: "${REGISTRY:-docker.io}/mysql:8.2.0"
-    restart: always
-    container_name: mysql
-    volumes:
-      - ./data/mysql:/var/lib/mysql  # 挂载目录，持久化存储
-    ports:
-      - '3306:3306'
-    environment:
-      TZ: Asia/Shanghai   # 设置时区
-      MYSQL_ROOT_PASSWORD: 'OneAPI@justsong' # 设置 root 用户的密码
-      MYSQL_USER: oneapi   # 创建专用用户
-      MYSQL_PASSWORD: '123456'    # 设置专用用户密码
-      MYSQL_DATABASE: one-api   # 自动创建数据库
+  # db:
+  #   image: mysql:8.2.0
+  #   restart: always
+  #   volumes:
+  #     - ./data/mysql:/var/lib/mysql
+  #   ports:
+  #     - '3306:3306'
+  #   environment:
+  #     TZ: Asia/Shanghai
+  #     MYSQL_ROOT_PASSWORD: 'change_me'
+  #     MYSQL_USER: neo-matrix
+  #     MYSQL_PASSWORD: 'change_me'
+  #     MYSQL_DATABASE: neo-matrix

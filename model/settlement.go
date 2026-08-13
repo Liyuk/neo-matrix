@@ -146,8 +146,21 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		if mismatch {
 			degradeChannelTrust(item.ChannelId, periodEnd)
 		}
-		// 计入结算中余额（对账异常时仍计入，由管理员人工处置/对账降权触发）
-		_ = UpdateSupplierBalance(supplier.UserId, revenueQuota, "settling")
+		// 计入结算中余额（对账异常时仍计入，由管理员人工处置/对账降权触发）。
+		// 放入事务：settlement 创建 + 余额入账 原子，失败整体回滚，避免"结算单存在但钱没到账"。
+		tx := DB.Begin()
+		if err := tx.Model(&Supplier{}).Where("user_id = ?", supplier.UserId).
+			Update("settling_balance", gorm.Expr("settling_balance + ?", revenueQuota)).Error; err != nil {
+			tx.Rollback()
+			// 回滚结算单，让重跑能重新入账
+			_ = DB.Delete(&Settlement{}, "id = ?", settlement.Id)
+			return count, err
+		}
+		if err := tx.Commit().Error; err != nil {
+			tx.Rollback()
+			_ = DB.Delete(&Settlement{}, "id = ?", settlement.Id)
+			return count, err
+		}
 		count++
 	}
 	return count, nil
@@ -256,8 +269,19 @@ func ConfirmSettlement(id int) error {
 	if err := DB.First(&supplier, "id = ?", settlement.SupplierId).Error; err != nil {
 		return err
 	}
-	// 结算中余额扣减 + 可提现余额增加
 	tx := DB.Begin()
+	// 原子抢状态：仅当仍为 pending 时翻转，并发双击只有一个成功
+	result := tx.Model(&Settlement{}).Where("id = ? AND status = ?", id, SettlementStatusPending).
+		Update("status", SettlementStatusSettled)
+	if result.Error != nil {
+		tx.Rollback()
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		tx.Rollback()
+		return nil // 已被其他请求处理
+	}
+	// 结算中余额扣减 + 可提现余额增加（状态已锁定，余额转移同事务）
 	if err := tx.Model(&Supplier{}).Where("id = ?", settlement.SupplierId).
 		Update("settling_balance", gorm.Expr("settling_balance - ?", settlement.RevenueQuota)).Error; err != nil {
 		tx.Rollback()
@@ -265,10 +289,6 @@ func ConfirmSettlement(id int) error {
 	}
 	if err := tx.Model(&Supplier{}).Where("id = ?", settlement.SupplierId).
 		Update("withdraw_balance", gorm.Expr("withdraw_balance + ?", settlement.RevenueQuota)).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	if err := tx.Model(&Settlement{}).Where("id = ?", id).Update("status", SettlementStatusSettled).Error; err != nil {
 		tx.Rollback()
 		return err
 	}

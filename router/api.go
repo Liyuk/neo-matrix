@@ -126,6 +126,13 @@ func SetApiRouter(router *gin.Engine) {
 			costDeclRoute.GET("/pending", controller.AdminCostDeclList)
 			costDeclRoute.PUT("/:id", controller.AdminReviewCostDecl)
 		}
+		// neo-matrix: 供给方申请审核管理端
+		supplierAdminRoute := apiRouter.Group("/supplier-admin")
+		supplierAdminRoute.Use(middleware.AdminAuth())
+		{
+			supplierAdminRoute.GET("/", controller.AdminSuppliers)
+			supplierAdminRoute.PUT("/:userId", controller.AdminUpdateSupplier)
+		}
 		withdrawalRoute := apiRouter.Group("/withdrawal")
 		withdrawalRoute.Use(middleware.AdminAuth())
 		{
