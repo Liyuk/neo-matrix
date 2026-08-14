@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"log"
 	"time"
 
@@ -76,17 +77,7 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 			continue
 		}
 		// 分成计算：利润 = 零售 - 成本；供给方得 cost + 利润×(1-platform_ratio)
-		// 边界：成本 >= 零售时（负利润），供给方最多拿成本（上限=零售），平台不补贴、不留负数。
-		profit := item.TotalQuota - item.CostQuota
-		platformRatio := supplier.PlatformRatio
-		if platformRatio <= 0 || platformRatio > 1 {
-			platformRatio = 0.2
-		}
-		revenueQuota := item.CostQuota + int(float64(profit)*(1-platformRatio))
-		if revenueQuota < 0 || revenueQuota > item.TotalQuota {
-			revenueQuota = item.TotalQuota
-		}
-		platformQuota := item.TotalQuota - revenueQuota
+		revenueQuota, platformQuota := computeSettlementSplit(item.TotalQuota, item.CostQuota, supplier.PlatformRatio)
 
 		// 对账：本周期内 channel.used_quota 增量 vs 本周期消费日志总量。
 		// 用上一周期结算快照 used_quota_end 求增量（used_quota 是累计值，不能直接比）。
@@ -95,13 +86,20 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		// 幂等检查：同周期同渠道已存在则更新
 		var existing Settlement
 		err = DB.Where("period_start = ? AND period_end = ? AND channel_id = ?", periodStart, periodEnd, item.ChannelId).First(&existing).Error
-		// 重叠防重：若该渠道已有"周期边界不同但时间上重叠"的结算单，跳过本单，
-		// 防止同一批日志被重叠周期重复结算/重复入账。
+		// 重叠防重：仅在"记录不存在"时检查时间重叠。
 		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				// 查询失败（非"不存在"）：跳过该渠道，避免误入 create 分支产生重复结算单/重复入账。
+				log.Printf("settlement: query failed for channel %d: %v", item.ChannelId, err)
+				continue
+			}
 			var overlapping int64
-			DB.Model(&Settlement{}).
+			if err := DB.Model(&Settlement{}).
 				Where("channel_id = ? AND period_start < ? AND period_end > ?", item.ChannelId, periodEnd, periodStart).
-				Count(&overlapping)
+				Count(&overlapping).Error; err != nil {
+				log.Printf("settlement: overlap check failed for channel %d: %v", item.ChannelId, err)
+				continue
+			}
 			if overlapping > 0 {
 				log.Printf("settlement: skip channel %d period [%d,%d) - overlaps existing settlement", item.ChannelId, periodStart, periodEnd)
 				continue
@@ -124,8 +122,10 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 			settlement.Status = SettlementStatusMismatch
 		}
 		if err == nil {
-			// 已存在：若已确认/已入账则跳过，否则更新为最新聚合值
-			if existing.Status >= SettlementStatusConfirmed {
+			// 已存在：仅已入账（Settled）记录不可再动，其他（pending/mismatch/confirmed）重跑都更新为最新聚合值。
+			// 修复：原先 status >= Confirmed 会把 mismatch(3) 也当"已处理"跳过，导致对账异常单被永久冻结，
+			// 重跑不再更新、不再重新入账。现在 mismatch/pending 都能被重跑覆盖并同步余额。
+			if existing.Status == SettlementStatusSettled {
 				continue
 			}
 			// 新判为异常，且此前不是异常 → 触发降权（重跑已异常记录不重复降权）
@@ -138,14 +138,45 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 				"cost_quota":     item.CostQuota,
 				"revenue_quota":  revenueQuota,
 				"platform_quota": platformQuota,
-				"used_quota_end": channel.UsedQuota,
-				"status":         SettlementStatusPending,
-				"created_time":   time.Now().Unix(),
+				// 不更新 used_quota_end：该字段语义是"周期末快照"。重跑历史单时 channel.UsedQuota
+				// 已是当前值（含后续周期消费），写入会污染下一周期对账的增量基准 → 误判异常/误降权。
+				// 基准应保持首次创建结算单时的快照不变。
+				"status":       SettlementStatusPending,
+				"created_time": time.Now().Unix(),
 			}
 			if mismatch {
 				updates["status"] = SettlementStatusMismatch
 			}
-			if err := DB.Model(&Settlement{}).Where("id = ?", existing.Id).Updates(updates).Error; err != nil {
+			// 重跑更新聚合值时，同步结算中余额：settling_balance 加上（新 - 旧）的差额。
+			// 原实现 update 分支不碰余额，导致重跑（日志补录/对账修正）后余额与结算单漂移；
+			// 差额为负表示本次聚合值下降（修正/回落），余额随之回退。
+			// 并发防护（CAS）：UPDATE 限定 "status != Settled AND revenue_quota = 旧值"。
+			//  - 管理员恰好已确认入账（settled）→ WHERE 不命中 → RowsAffected=0 → 放弃，不覆盖已入账单。
+			//  - 另一重跑已先刷新聚合值 → revenue_quota 已变 → WHERE 不命中 → RowsAffected=0 → 放弃，
+			//    避免两个重跑都基于同一旧值叠加差额导致 settling_balance 双计入。
+			//  - delta==0 且各列值完全相同（幂等重跑）→ MySQL 返回 0 受影响行 → 视为无需更新，同样跳过。
+			tx := DB.Begin()
+			result := tx.Model(&Settlement{}).
+				Where("id = ? AND status != ? AND revenue_quota = ?", existing.Id, SettlementStatusSettled, existing.RevenueQuota).
+				Updates(updates)
+			if result.Error != nil {
+				tx.Rollback()
+				return count, err
+			}
+			if result.RowsAffected != 1 {
+				tx.Rollback()
+				continue // 已被并发确认入账或另一重跑刷新，放弃本次
+			}
+			delta := revenueQuota - existing.RevenueQuota
+			if delta != 0 {
+				if err := tx.Model(&Supplier{}).Where("user_id = ?", supplier.UserId).
+					Update("settling_balance", gorm.Expr("settling_balance + ?", delta)).Error; err != nil {
+					tx.Rollback()
+					return count, err
+				}
+			}
+			if err := tx.Commit().Error; err != nil {
+				tx.Rollback()
 				return count, err
 			}
 			count++
@@ -176,6 +207,23 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+// computeSettlementSplit 计算供给方分成与平台留存（quota）。
+// 公式：利润 = 零售 - 成本；供给方得 cost + 利润×(1-platform_ratio)。
+// 边界：成本 >= 零售（负利润）时，供给方最多拿零售额（revenue 钳制在 [0, total]），
+// 平台不补贴、不留负数。platformRatio 非法（<=0 或 >1）时回退默认 0.2。
+func computeSettlementSplit(totalQuota int, costQuota int, platformRatio float64) (int, int) {
+	profit := totalQuota - costQuota
+	if platformRatio <= 0 || platformRatio > 1 {
+		platformRatio = 0.2
+	}
+	revenueQuota := costQuota + int(float64(profit)*(1-platformRatio))
+	if revenueQuota < 0 || revenueQuota > totalQuota {
+		revenueQuota = totalQuota
+	}
+	platformQuota := totalQuota - revenueQuota
+	return revenueQuota, platformQuota
 }
 
 // reconcileChannelUsage 对账：本周期内某渠道实际消费（logs 聚合）与 used_quota 增量是否一致。
@@ -286,12 +334,13 @@ func SettlementLoop(frequencySeconds int) {
 }
 
 // ConfirmSettlement 确认结算：settling_balance 转入 withdraw_balance。
+// 仅 pending 或 mismatch（对账异常，管理员人工核验后入账）可确认；已入账(settled)不可重复入账。
 func ConfirmSettlement(id int) error {
 	var settlement Settlement
 	if err := DB.First(&settlement, "id = ?", id).Error; err != nil {
 		return err
 	}
-	if settlement.Status != SettlementStatusPending {
+	if settlement.Status != SettlementStatusPending && settlement.Status != SettlementStatusMismatch {
 		return nil // 已处理
 	}
 	var supplier Supplier
@@ -299,8 +348,9 @@ func ConfirmSettlement(id int) error {
 		return err
 	}
 	tx := DB.Begin()
-	// 原子抢状态：仅当仍为 pending 时翻转，并发双击只有一个成功
-	result := tx.Model(&Settlement{}).Where("id = ? AND status = ?", id, SettlementStatusPending).
+	// 原子抢状态：仅当仍为 pending/mismatch 时翻转，并发双击只有一个成功
+	result := tx.Model(&Settlement{}).
+		Where("id = ? AND status IN ?", id, []int{SettlementStatusPending, SettlementStatusMismatch}).
 		Update("status", SettlementStatusSettled)
 	if result.Error != nil {
 		tx.Rollback()

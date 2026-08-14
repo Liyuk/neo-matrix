@@ -92,7 +92,7 @@ const Settlement = () => {
   };
 
   const quotaToRMB = (quota) => (quota * 7.0 / 500000).toFixed(2);
-  const statusText = (s) => (s === 2 ? '已入账' : s === 1 ? '已确认' : s === 3 ? '对账异常' : '待结算');
+  const statusText = (s) => (s === 2 ? '已入账' : s === 3 ? '对账异常' : '待结算');
 
   return (
     <Container>
@@ -140,6 +140,16 @@ const Settlement = () => {
               <Table.Cell>{quotaToRMB(s.platform_quota)}</Table.Cell>
               <Table.Cell>{statusText(s.status)}</Table.Cell>
               <Table.Cell>
+                {s.status === 3 && (
+                  <Button
+                    size='tiny'
+                    color='orange'
+                    onClick={() => confirmSettlement(s.id)}
+                    title='对账异常，核验后确认入账'
+                  >
+                    核验入账
+                  </Button>
+                )}
                 {s.status === 0 && (
                   <Button size='tiny' color='green' onClick={() => confirmSettlement(s.id)}>
                     确认入账

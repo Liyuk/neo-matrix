@@ -41,12 +41,7 @@ func TestSettlementRevenue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profit := tt.totalQuota - tt.costQuota
-			revenue := tt.costQuota + int(float64(profit)*(1-tt.platformRatio))
-			if revenue < 0 || revenue > tt.totalQuota {
-				revenue = tt.totalQuota
-			}
-			platform := tt.totalQuota - revenue
+			revenue, platform := computeSettlementSplit(tt.totalQuota, tt.costQuota, tt.platformRatio)
 			if revenue != tt.wantRevenue {
 				t.Errorf("revenue = %d, want %d", revenue, tt.wantRevenue)
 			}
