@@ -12,4 +12,7 @@ cmd.md
 .env
 /one-api
 temp
-.DS_Storenode_modules/
+.DS_Store
+node_modules/
+.playwright-cli/
+output/
