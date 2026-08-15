@@ -177,3 +177,57 @@ func TestConfirmSettlementAcceptsMismatch(t *testing.T) {
 		t.Fatalf("double-credit on re-confirm: withdraw=%d, want 960", sup.WithdrawBalance)
 	}
 }
+
+// TestUpgradeChannelTrust 信任爬坡：连续 N 周期对账正常才自动 +1，封顶 5；不足阈值不升。
+func TestUpgradeChannelTrust(t *testing.T) {
+	resetSettlementTables()
+	ch := Channel{Id: 500, Type: 1, Name: "climb", Status: ChannelStatusEnabled, TrustLevel: 1}
+	if err := DB.Create(&ch).Error; err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+	// 造 settlementTrustUpgradeAfter-1 = 6 个"对账正常"的历史周期 → 不足以触发升级
+	base := int64(1000000)
+	for i := 0; i < settlementTrustUpgradeAfter-1; i++ {
+		s := Settlement{
+			ChannelId: ch.Id, Status: SettlementStatusSettled,
+			PeriodStart: base + int64(i)*1000, PeriodEnd: base + int64(i)*1000 + 1000,
+		}
+		if err := DB.Create(&s).Error; err != nil {
+			t.Fatalf("seed settlement: %v", err)
+		}
+	}
+	// 调用：6 个正常周期 + 当前 = 7 → 达到阈值 → trust 1→2
+	upgradeChannelTrust(ch.Id, base+100000)
+	var got Channel
+	DB.First(&got, "id = ?", ch.Id)
+	if got.TrustLevel != 2 {
+		t.Fatalf("trust after 7 normal periods = %d, want 2", got.TrustLevel)
+	}
+
+	// 再造 6 个正常周期 + 当前，连升到 3
+	for i := 0; i < settlementTrustUpgradeAfter-1; i++ {
+		base += 1000
+		s := Settlement{ChannelId: ch.Id, Status: SettlementStatusSettled,
+			PeriodStart: base + int64(i)*1000, PeriodEnd: base + int64(i)*1000 + 1000}
+		DB.Create(&s)
+	}
+	upgradeChannelTrust(ch.Id, base+100000)
+	DB.First(&got, "id = ?", ch.Id)
+	if got.TrustLevel != 3 {
+		t.Fatalf("trust after 14 normal periods = %d, want 3", got.TrustLevel)
+	}
+
+	// 异常周期会打断爬坡：清掉历史，换成 6 个"对账异常"周期 → 不升
+	DB.Exec("DELETE FROM settlements WHERE channel_id = ?", ch.Id)
+	DB.Model(&Channel{}).Where("id = ?", ch.Id).Update("trust_level", 1)
+	for i := 0; i < settlementTrustUpgradeAfter-1; i++ {
+		s := Settlement{ChannelId: ch.Id, Status: SettlementStatusMismatch,
+			PeriodStart: base + int64(i)*1000, PeriodEnd: base + int64(i)*1000 + 1000}
+		DB.Create(&s)
+	}
+	upgradeChannelTrust(ch.Id, base+100000)
+	DB.First(&got, "id = ?", ch.Id)
+	if got.TrustLevel != 1 {
+		t.Fatalf("trust with only mismatch periods = %d, want 1 (must not climb)", got.TrustLevel)
+	}
+}

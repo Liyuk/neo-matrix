@@ -1,0 +1,61 @@
+name: demo-pages
+
+# 纯静态可交互 demo 部署到 GitHub Pages。
+# 触发：push 到 main 且改了 web/default 或本 workflow；也支持手动触发。
+# 构建时带 PUBLIC_URL=/<repo> + REACT_APP_DEMO=true，产物发布到
+# https://<owner>.github.io/<repo>/（仓库 Settings → Pages → Source: GitHub Actions）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/default/**'
+      - '.github/workflows/demo-pages.yml'
+  workflow_dispatch:
+
+# 给 Pages 的权限：deploy-pages 需要 id-token + pages 写权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Build demo bundle
+        working-directory: web/default
+        run: |
+          npm install
+          # package-lock.json 被仓库 gitignore，用 npm install；PUBLIC_URL 用仓库名拼子路径
+          PUBLIC_URL=/${{ github.event.repository.name }} \
+          REACT_APP_DEMO=true \
+          DISABLE_ESLINT_PLUGIN=true \
+          npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/build/default
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

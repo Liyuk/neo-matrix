@@ -48,7 +48,7 @@ const Supplier = () => {
   const loadSupplier = async () => {
     setLoading(true);
     try {
-      const res = await API.get('/api/supplier/self');
+      const res = (await API.get('/api/supplier/self')).data;
       if (res.success) {
         setSupplier(res.data);
       } else {
@@ -63,7 +63,7 @@ const Supplier = () => {
 
   const loadDashboard = async () => {
     try {
-      const res = await API.get('/api/supplier/dashboard');
+      const res = (await API.get('/api/supplier/dashboard')).data;
       if (res.success) {
         setSupplier(res.data.supplier);
         setChannels(res.data.channels || []);
@@ -78,7 +78,7 @@ const Supplier = () => {
 
   const loadWithdrawals = async () => {
     try {
-      const res = await API.get('/api/supplier/withdrawals');
+      const res = (await API.get('/api/supplier/withdrawals')).data;
       if (res.success) {
         setWithdrawals(res.data || []);
       }
@@ -99,7 +99,7 @@ const Supplier = () => {
       return;
     }
     try {
-      const res = await API.post('/api/supplier/channel', addForm);
+      const res = (await API.post('/api/supplier/channel', addForm)).data;
       if (res.success) {
         showSuccess('渠道创建成功');
         setShowAdd(false);
@@ -115,7 +115,7 @@ const Supplier = () => {
 
   const deleteChannel = async (id) => {
     try {
-      const res = await API.delete(`/api/supplier/channel/${id}`);
+      const res = (await API.delete(`/api/supplier/channel/${id}`)).data;
       if (res.success) {
         showSuccess('删除成功');
         loadDashboard();
@@ -133,7 +133,7 @@ const Supplier = () => {
       return;
     }
     try {
-      const res = await API.post('/api/supplier/withdraw', withdrawForm);
+      const res = (await API.post('/api/supplier/withdraw', withdrawForm)).data;
       if (res.success) {
         showSuccess('提现申请已提交');
         setShowWithdraw(false);
@@ -155,9 +155,8 @@ const Supplier = () => {
 
   return (
     <Container>
-      <Header as='h2' icon>
-        <Icon name='share alternate' />
-        供给方中心
+      <Header as='h2'>
+        <Icon name='share alternate' style={{ fontSize: '0.85em', verticalAlign: 'middle' }} /> 供给方中心
         <Header.Subheader>把闲置的 API Key 托管到这里，按用量获得分成</Header.Subheader>
       </Header>
       {supplier && (

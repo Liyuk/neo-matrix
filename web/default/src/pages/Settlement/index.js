@@ -28,13 +28,15 @@ const Settlement = () => {
   const loadAll = async () => {
     try {
       const sRes = await API.get('/api/settlement/');
-      if (sRes.success) setSettlements(sRes.data || []);
+      const res = sRes.data;
+      if (res.success) setSettlements(res.data || []);
     } catch (err) {
       showError('加载结算失败：' + err.message);
     }
     try {
       const wRes = await API.get('/api/withdrawal/');
-      if (wRes.success) setWithdrawals(wRes.data || []);
+      const res = wRes.data;
+      if (res.success) setWithdrawals(res.data || []);
     } catch (err) {
       showError('加载提现失败：' + err.message);
     }
@@ -46,7 +48,7 @@ const Settlement = () => {
 
   const runSettlement = async () => {
     try {
-      const res = await API.post('/api/settlement/run', period);
+      const res = (await API.post('/api/settlement/run', period)).data;
       if (res.success) {
         showSuccess(`结算完成，生成 ${res.data.count} 条记录`);
         setShowRun(false);
@@ -61,7 +63,7 @@ const Settlement = () => {
 
   const confirmSettlement = async (id) => {
     try {
-      const res = await API.put(`/api/settlement/${id}`, {});
+      const res = (await API.put(`/api/settlement/${id}`, {})).data;
       if (res.success) {
         showSuccess('结算已确认');
         loadAll();
@@ -75,10 +77,10 @@ const Settlement = () => {
 
   const processWithdrawal = async () => {
     try {
-      const res = await API.put(`/api/withdrawal/${withdrawalForm.id}`, {
+      const res = (await API.put(`/api/withdrawal/${withdrawalForm.id}`, {
         status: withdrawalForm.status,
         reason: withdrawalForm.reason,
-      });
+      })).data;
       if (res.success) {
         showSuccess('操作成功');
         setWithdrawalForm({ id: 0, status: 0, reason: '' });
@@ -96,9 +98,8 @@ const Settlement = () => {
 
   return (
     <Container>
-      <Header as='h2' icon>
-        <Icon name='balance scale' />
-        结算与提现管理
+      <Header as='h2'>
+        <Icon name='balance scale' style={{ fontSize: '0.85em', verticalAlign: 'middle' }} /> 结算与提现管理
       </Header>
 
       <Segment>

@@ -22,6 +22,11 @@ const settlementReconcileThresholdRatio = 0.2
 // settlementTrustDegradeAfter 连续对账异常达到该次数时降低渠道信任等级。
 const settlementTrustDegradeAfter = 2
 
+// settlementTrustUpgradeAfter 连续对账正常达到该周期数时自动提升渠道信任等级（爬坡闭环）。
+// 与 degrade 对称：新渠道信任 1 起步，靠"运营正常"逐步自动爬到更高信任，不再只等管理员手动提。
+// 仅统计"已确认/已入账"（非异常）周期；异常、待结算不算正常周期。升到 5 后封顶。
+const settlementTrustUpgradeAfter = 7
+
 // SettlementItem 单条聚合结果：某渠道在某周期的消费汇总。
 type SettlementItem struct {
 	ChannelId int
@@ -188,6 +193,10 @@ func GenerateSettlement(periodStart int64, periodEnd int64) (int, error) {
 		// 新创建且判为异常 → 触发降权（幂等：create 只发生一次，重跑走 update 分支不再降）
 		if mismatch {
 			degradeChannelTrust(item.ChannelId, periodEnd)
+		} else {
+			// 新创建且对账正常 → 触发信任爬坡（连续正常周期达到阈值自动 +1，封顶 5）。
+			// 与降权对称：让新渠道靠真实运营自动获得更高调度权重，不再只等管理员手动提。
+			upgradeChannelTrust(item.ChannelId, periodEnd)
 		}
 		// 计入结算中余额（对账异常时仍计入，由管理员人工处置/对账降权触发）。
 		// 放入事务：settlement 创建 + 余额入账 原子，失败整体回滚，避免"结算单存在但钱没到账"。
@@ -282,6 +291,31 @@ func degradeChannelTrust(channelId int, periodEnd int64) {
 		return
 	}
 	// 刷新路由缓存，让降权即时生效
+	InitChannelCache()
+}
+
+// upgradeChannelTrust 对账正常时自动提升渠道信任等级（爬坡闭环，只升不降）。
+// 连续 settlementTrustUpgradeAfter 个周期对账正常才升一次，防止偶发波动误升。
+// 信任上限 5：达到后不再升（信任 5 已无调度惩罚，再升无意义）。
+// 与 degradeChannelTrust 对称：新渠道信任 1 起步 → 靠运营正常自动爬到 5；
+// 管理员仍可在成本申报审批时手动指定（封顶/干预），异常时由 degrade 自动降回。
+func upgradeChannelTrust(channelId int, periodEnd int64) {
+	var prevCount int64
+	DB.Model(&Settlement{}).
+		Where("channel_id = ? AND status != ? AND period_end < ?", channelId, SettlementStatusMismatch, periodEnd).
+		Count(&prevCount)
+	// 本周期（对账正常）也算一个正常周期，+1 计入；达到阈值才升一次。
+	if prevCount+1 < settlementTrustUpgradeAfter {
+		return
+	}
+	// 升 TrustLevel（最高 5）。
+	err := DB.Model(&Channel{}).Where("id = ?", channelId).
+		Update("trust_level", gorm.Expr("MIN(trust_level + 1, 5)")).Error
+	if err != nil {
+		log.Printf("settlement: failed to upgrade trust for channel %d: %v", channelId, err)
+		return
+	}
+	// 刷新路由缓存，让信任提升即时生效
 	InitChannelCache()
 }
 

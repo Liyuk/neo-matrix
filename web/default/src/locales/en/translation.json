@@ -730,15 +730,15 @@
     }
   },
   "footer": {
-    "built_by": "built by",
-    "built_by_name": "JustSong",
-    "license": ", source code is licensed under the",
+    "based_on": "is derived from",
+    "by_author": "(by",
+    "license": ", and is licensed under the",
     "mit": "MIT License"
   },
   "home": {
     "welcome": {
-      "title": "Welcome to One API",
-      "description": "One API is a LLM API management and distribution system that helps you better manage and use LLM APIs from various providers.",
+      "title": "Welcome to Neo Matrix",
+      "description": "Neo Matrix is derived from One API. It aggregates LLM APIs and lets suppliers contribute idle API keys in return for usage-based revenue sharing.",
       "login_notice": "To use the service, please login or register first."
     },
     "system_status": {
@@ -808,7 +808,7 @@
   },
   "about": {
     "title": "About",
-    "description": "One API is an open-source API management and proxy platform.",
+    "description": "Neo Matrix is a shared AI relay and supplier revenue-sharing platform derived from One API.",
     "repository": "Repository: ",
     "loading_failed": "Loading failed"
   },
