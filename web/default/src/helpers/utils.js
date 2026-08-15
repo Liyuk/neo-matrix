@@ -24,11 +24,12 @@ export function isRoot() {
 
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
-  if (!system_name) return 'One API';
+  if (!system_name) return 'Neo Matrix';
   return system_name;
 }
 
 export function getLogo() {
+  // 空串也会导致 <img src=""> 显示异常，统一兜底到内置 logo
   let logo = localStorage.getItem('logo');
   if (!logo) return '/logo.png';
   return logo;

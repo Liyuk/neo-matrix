@@ -28,7 +28,7 @@ func GetStatus(c *gin.Context) {
 			"github_client_id":            config.GitHubClientId,
 			"lark_client_id":              config.LarkClientId,
 			"system_name":                 config.SystemName,
-			"logo":                        config.Logo,
+			"logo":                        logoURL(),
 			"footer_html":                 config.Footer,
 			"wechat_qrcode":               config.WeChatAccountQRCodeImageURL,
 			"wechat_login":                config.WeChatAuthEnabled,
@@ -195,6 +195,15 @@ func SendPasswordResetEmail(c *gin.Context) {
 type PasswordResetRequest struct {
 	Email string `json:"email"`
 	Token string `json:"token"`
+}
+
+// logoURL 返回站点 logo 地址：管理员在设置里配置了 Logo 则用配置值，
+// 否则回退到内置 /logo.png（避免 /api/status 返回空串导致前端 <img src=""> 显示异常）。
+func logoURL() string {
+	if strings.TrimSpace(config.Logo) != "" {
+		return config.Logo
+	}
+	return "/logo.png"
 }
 
 func ResetPassword(c *gin.Context) {
