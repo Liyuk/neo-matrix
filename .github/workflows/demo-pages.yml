@@ -41,8 +41,10 @@ jobs:
       - name: Build demo bundle
         working-directory: web/default
         run: |
+          # package-lock.json 被仓库 gitignore，用 npm install；PUBLIC_URL 用仓库名拼子路径。
+          # web/build 在 CI 全新 checkout 下不存在，先建目录（build 脚本的 mv -f 依赖它）。
+          mkdir -p ../build
           npm install
-          # package-lock.json 被仓库 gitignore，用 npm install；PUBLIC_URL 用仓库名拼子路径
           PUBLIC_URL=/${{ github.event.repository.name }} \
           REACT_APP_DEMO=true \
           DISABLE_ESLINT_PLUGIN=true \
