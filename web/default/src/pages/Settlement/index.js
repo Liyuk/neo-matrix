@@ -98,7 +98,7 @@ const Settlement = () => {
 
   return (
     <Container>
-      <Header as='h2'>
+      <Header as='h2' style={{ display: 'flex' }}>
         <Icon name='balance scale' style={{ fontSize: '0.85em', verticalAlign: 'middle' }} /> 结算与提现管理
       </Header>
 

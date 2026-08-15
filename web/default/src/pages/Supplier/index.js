@@ -155,7 +155,7 @@ const Supplier = () => {
 
   return (
     <Container>
-      <Header as='h2'>
+      <Header as='h2' style={{ display: 'flex' }}>
         <Icon name='share alternate' style={{ fontSize: '0.85em', verticalAlign: 'middle' }} /> 供给方中心
         <Header.Subheader>把闲置的 API Key 托管到这里，按用量获得分成</Header.Subheader>
       </Header>
