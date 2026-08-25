@@ -150,15 +150,15 @@ RoutingWeight = 1 / (cost_ratio × trust_penalty)
 预期地址：
 
 ```text
-https://liyuk.github.io/neo-matrix/
+https://liyuk.com/neo-matrix/
 ```
 
 三种身份可以通过顶部“演示身份”选择器切换，也可以直接使用 URL 参数：
 
 ```text
-https://liyuk.github.io/neo-matrix/?demo_user=admin#/
-https://liyuk.github.io/neo-matrix/?demo_user=supplier#/supplier
-https://liyuk.github.io/neo-matrix/?demo_user=consumer#/dashboard
+https://liyuk.com/neo-matrix/?demo_user=admin#/
+https://liyuk.com/neo-matrix/?demo_user=supplier#/supplier
+https://liyuk.com/neo-matrix/?demo_user=consumer#/dashboard
 ```
 
 注意：`demo_user` 必须放在 `#` 之前，因为它由 `window.location.search` 读取。选择器切换后会保留当前页面路径并重新加载对应身份的数据视图。
