@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Form, Card } from 'semantic-ui-react';
+import { Button, Form, Card } from '../../ui/primitives';
 import { API, showError, showSuccess } from '../../helpers';
 
 const AddUser = () => {

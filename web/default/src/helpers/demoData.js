@@ -520,7 +520,7 @@ const options = [
   ['About', '**Neo Matrix** 演示环境 —— 基于 one-api 改造的共享 AI 中转站。\n\n本页为纯静态演示，数据全部本地生成，未连接任何真实上游。'],
   ['Footer', 'Neo Matrix 纯静态演示 · 数据为本地 mock'],
   ['SystemName', 'Neo Matrix'],
-  ['Logo', 'logo.png'],
+  ['Logo', 'logo.svg'],
   ['Theme', 'default'],
   ['TopUpLink', ''],
   ['ChatLink', ''],

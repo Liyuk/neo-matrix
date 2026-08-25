@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Button, Card, Form, Input, Message} from 'semantic-ui-react';
+import {Button, Card, Form, Input, Message} from '../../ui/primitives';
 import {useNavigate, useParams} from 'react-router-dom';
 import {API, copy, getChannelModels, showError, showInfo, showSuccess, verifyJSON,} from '../../helpers';
 import {CHANNEL_OPTIONS} from '../../constants';

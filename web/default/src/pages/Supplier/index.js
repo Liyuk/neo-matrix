@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Button,
+  Badge,
   Card,
   Container,
   Divider,
@@ -14,13 +14,13 @@ import {
   Segment,
   Statistic,
   Table,
-} from 'semantic-ui-react';
+} from '../../ui/primitives';
 import { API, showError, showSuccess } from '../../helpers';
 import { useTranslation } from 'react-i18next';
+import BrandMark from '../../ui/BrandMark';
 
 const Supplier = () => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [supplier, setSupplier] = useState(null);
   const [channels, setChannels] = useState([]);
@@ -51,14 +51,16 @@ const Supplier = () => {
       const res = (await API.get('/api/supplier/self')).data;
       if (res.success) {
         setSupplier(res.data);
+        setLoading(false);
+        return true;
       } else {
-        showError(res.message);
-        navigate('/');
+        setSupplier(null);
       }
     } catch (err) {
-      showError('加载供给方信息失败：' + err.message);
+      setSupplier(null);
     }
     setLoading(false);
+    return false;
   };
 
   const loadDashboard = async () => {
@@ -88,9 +90,12 @@ const Supplier = () => {
   };
 
   useEffect(() => {
-    loadSupplier();
-    loadDashboard();
-    loadWithdrawals();
+    (async () => {
+      const allowed = await loadSupplier();
+      if (allowed) {
+        await Promise.all([loadDashboard(), loadWithdrawals()]);
+      }
+    })();
   }, []);
 
   const submitChannel = async () => {
@@ -155,36 +160,23 @@ const Supplier = () => {
 
   return (
     <Container>
-      <Header as='h2' style={{ display: 'flex' }}>
-        <Icon name='share alternate' style={{ fontSize: '0.85em', verticalAlign: 'middle' }} /> 供给方中心
-        <Header.Subheader>把闲置的 API Key 托管到这里，按用量获得分成</Header.Subheader>
-      </Header>
+      <div className='supplier-heading'>
+        <BrandMark size='lg' label='Neo Matrix 供给方中心' />
+        <div>
+          <Header as='h2'>供给方中心</Header>
+          <p>把闲置的 API Key 托管到这里，按用量获得分成。</p>
+        </div>
+        <div className='supplier-heading-actions'>
+          <Badge tone='success'>调度已启用</Badge>
+          <span>按成本与信任度分配请求</span>
+        </div>
+      </div>
       {supplier && (
-        <Grid stackable columns={4}>
-          <Grid.Column>
-            <Statistic color='green'>
-              <Statistic.Value>{quotaToRMB(supplier.withdraw_balance)}</Statistic.Value>
-              <Statistic.Label>可提现余额（元）</Statistic.Label>
-            </Statistic>
-          </Grid.Column>
-          <Grid.Column>
-            <Statistic color='blue'>
-              <Statistic.Value>{quotaToRMB(supplier.settling_balance)}</Statistic.Value>
-              <Statistic.Label>结算中（元）</Statistic.Label>
-            </Statistic>
-          </Grid.Column>
-          <Grid.Column>
-            <Statistic color='teal'>
-              <Statistic.Value>{quotaToRMB(supplier.total_income)}</Statistic.Value>
-              <Statistic.Label>累计收益（元）</Statistic.Label>
-            </Statistic>
-          </Grid.Column>
-          <Grid.Column>
-            <Statistic>
-              <Statistic.Value>{(supplier.platform_ratio * 100).toFixed(0)}%</Statistic.Value>
-              <Statistic.Label>平台抽成（利润）</Statistic.Label>
-            </Statistic>
-          </Grid.Column>
+        <Grid className='supplier-stats' stackable columns={4}>
+          <Grid.Column><Card className='supplier-stat-card supplier-stat-success'><Card.Content><Statistic color='green'><Statistic.Value>{quotaToRMB(supplier.withdraw_balance)}</Statistic.Value><Statistic.Label>可提现余额（元）</Statistic.Label></Statistic></Card.Content></Card></Grid.Column>
+          <Grid.Column><Card className='supplier-stat-card supplier-stat-info'><Card.Content><Statistic color='blue'><Statistic.Value>{quotaToRMB(supplier.settling_balance)}</Statistic.Value><Statistic.Label>结算中（元）</Statistic.Label></Statistic></Card.Content></Card></Grid.Column>
+          <Grid.Column><Card className='supplier-stat-card supplier-stat-primary'><Card.Content><Statistic color='teal'><Statistic.Value>{quotaToRMB(supplier.total_income)}</Statistic.Value><Statistic.Label>累计收益（元）</Statistic.Label></Statistic></Card.Content></Card></Grid.Column>
+          <Grid.Column><Card className='supplier-stat-card supplier-stat-neutral'><Card.Content><Statistic><Statistic.Value>{(supplier.platform_ratio * 100).toFixed(0)}%</Statistic.Value><Statistic.Label>平台抽成（利润）</Statistic.Label></Statistic></Card.Content></Card></Grid.Column>
         </Grid>
       )}
 

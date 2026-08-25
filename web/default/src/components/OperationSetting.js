@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Divider, Form, Grid, Header } from 'semantic-ui-react';
+import { Divider, Form, Grid, Header } from '../ui/primitives';
 import {
   API,
   showError,

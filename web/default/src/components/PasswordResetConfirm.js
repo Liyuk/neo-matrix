@@ -7,7 +7,7 @@ import {
   Image,
   Card,
   Message,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { useTranslation } from 'react-i18next';
 import { API, copy, getLogo, showError, showNotice } from '../helpers';
 import { useSearchParams } from 'react-router-dom';

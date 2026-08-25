@@ -7,7 +7,7 @@ import {
   Image,
   Card,
   Message,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { useTranslation } from 'react-i18next';
 import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';
 import Turnstile from 'react-turnstile';

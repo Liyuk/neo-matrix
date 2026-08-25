@@ -7,7 +7,7 @@ import {
   Popup,
   Table,
   Dropdown,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link } from 'react-router-dom';
 import { API, showError, showSuccess } from '../helpers';
 import { useTranslation } from 'react-i18next';

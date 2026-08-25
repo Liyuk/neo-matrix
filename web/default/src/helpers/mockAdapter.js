@@ -28,6 +28,14 @@ const fail = (message) => ({ success: false, message });
 
 const st = (key) => demoState[key];
 
+function currentDemoUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch (_) {
+    return null;
+  }
+}
+
 // 返回数组的深拷贝，避免 React setState 同引用跳过重渲染（mock 改动后 loadAll 需要刷新）
 const listCopy = (arr) => arr.map((x) => (Array.isArray(x) ? x.slice() : { ...x }));
 
@@ -105,7 +113,7 @@ function route(ctx) {
       github_client_id: '',
       lark_client_id: '',
       system_name: 'Neo Matrix',
-      logo: 'logo.png',
+      logo: 'logo.svg',
       footer_html: 'Neo Matrix 纯静态演示 · 数据为本地 mock',
       wechat_qrcode: '',
       wechat_login: false,
@@ -189,11 +197,17 @@ function route(ctx) {
   if (is('/api/user/search') && method === 'get') {
     return ok(matchKeyword(st('users'), params.keyword, ['username', 'display_name']));
   }
-  if (is('/api/user/self') && method === 'get') return ok({ ...ROOT });
+  if (is('/api/user/self') && method === 'get') {
+    const demoUser = currentDemoUser();
+    const fixture = st('users').find((item) => item.id === demoUser?.id);
+    return ok({ ...ROOT, ...(fixture || {}), ...(demoUser || {}), token: demoUser?.token || ROOT.token });
+  }
   if (is('/api/user/self') && method === 'put') {
     const body = bodyOf(ctx);
-    Object.assign(ROOT, body);
-    return ok({ ...ROOT });
+    const demoUser = currentDemoUser();
+    const fixture = st('users').find((item) => item.id === demoUser?.id);
+    Object.assign(fixture || ROOT, body);
+    return ok({ ...ROOT, ...(fixture || {}), ...(demoUser || {}), ...body });
   }
   if (is('/api/user/self') && method === 'delete') return ok(null);
   if (is('/api/user/token') && method === 'get') return ok('demo_access_token_abcd1234');
@@ -333,7 +347,10 @@ function route(ctx) {
   }
 
   // ---------------- 令牌 ----------------
-  if (is('/api/token/') && method === 'get') return ok(paginate(st('tokens'), params));
+  if (is('/api/token/') && method === 'get') {
+    const demoUser = currentDemoUser();
+    return ok(paginate(st('tokens').filter((item) => !demoUser?.id || item.user_id === demoUser.id), params));
+  }
   if (is('/api/token/') && method === 'post') {
     const body = bodyOf(ctx);
     const id = demoState.nextTokenId++;
@@ -341,7 +358,7 @@ function route(ctx) {
     const key = `sk-demo-${id}-${String(id).padEnd(16, String(id % 10))}`;
     st('tokens').unshift({
       id,
-      user_id: 1,
+      user_id: currentDemoUser()?.id || 1,
       key,
       status: 1,
       name: body.name || '新令牌',
@@ -448,17 +465,44 @@ function route(ctx) {
   }
 
   // ---------------- 供给方 ----------------
-  const supplier = st('suppliers')[0];
-  if (is('/api/supplier/self') && method === 'get') return ok(supplier);
+  const demoUser = currentDemoUser();
+  const supplier = st('suppliers').find((item) => item.user_id === demoUser?.id);
+  if (is('/api/supplier/apply') && method === 'post') {
+    const userId = demoUser?.id || 4;
+    const existing = st('suppliers').find((item) => item.user_id === userId);
+    if (existing) return ok(existing, '已提交过申请');
+    const pending = {
+      id: st('suppliers').length + 1,
+      user_id: userId,
+      status: 2,
+      platform_ratio: 0.2,
+      withdraw_balance: 0,
+      settling_balance: 0,
+      total_income: 0,
+      trust_level: 1,
+      cost_decl_status: 0,
+      created_time: nowSec(),
+      updated_time: nowSec(),
+    };
+    st('suppliers').push(pending);
+    return ok(pending, '申请已提交，等待管理员审核');
+  }
+  if (is('/api/supplier/self') && method === 'get') {
+    return supplier ? ok(supplier) : fail('还不是供给方，请先提交申请');
+  }
   if (is('/api/supplier/dashboard') && method === 'get') {
+    if (!supplier) return fail('还不是供给方，请先提交申请');
     return ok({
       supplier: { ...supplier },
-      channels: listCopy(st('channels').filter((c) => c.owner_id === 3)),
-      settlements: listCopy(st('settlements').filter((s) => s.supplier_id === 1)),
+      channels: listCopy(st('channels').filter((c) => c.owner_id === supplier.user_id)),
+      settlements: listCopy(st('settlements').filter((s) => s.supplier_id === supplier.id)),
     });
   }
-  if (is('/api/supplier/withdrawals') && method === 'get') return ok(listCopy(st('withdrawals')));
+  if (is('/api/supplier/withdrawals') && method === 'get') {
+    return supplier ? ok(listCopy(st('withdrawals').filter((item) => item.supplier_id === supplier.id))) : ok([]);
+  }
   if (is('/api/supplier/channel') && method === 'post') {
+    if (!supplier) return fail('还不是供给方，请先提交申请');
     const body = bodyOf(ctx);
     const id = demoState.nextChannelId++;
     st('channels').unshift({
@@ -481,7 +525,7 @@ function route(ctx) {
       cost_decl_status: 0,
       cost_decl_note: '',
       is_shared: 1,
-      owner_id: 3,
+      owner_id: demoUser?.id || 3,
       settle_enabled: 1,
       created_time: nowSec(),
     });
@@ -494,13 +538,14 @@ function route(ctx) {
     return ok(null, '删除成功');
   }
   if (is('/api/supplier/withdraw') && method === 'post') {
+    if (!supplier) return fail('还不是供给方，请先提交申请');
     const body = bodyOf(ctx);
     const id = demoState.nextWithdrawalId++;
     const created = nowSec();
     st('withdrawals').unshift({
       id,
-      supplier_id: 1,
-      user_id: 3,
+      supplier_id: supplier?.id || 1,
+      user_id: demoUser?.id || 3,
       amount_quota: body.amount_quota,
       amount_fiat: (body.amount_quota * 7) / 500000,
       pay_method: body.pay_method,

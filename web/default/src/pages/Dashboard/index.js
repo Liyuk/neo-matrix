@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Card, Grid} from 'semantic-ui-react';
+import {Card, Grid} from '../../ui/primitives';
 import {
   Bar,
   BarChart,

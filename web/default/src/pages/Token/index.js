@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card } from 'semantic-ui-react';
+import { Card } from '../../ui/primitives';
 import TokensTable from '../../components/TokensTable';
 import { useTranslation } from 'react-i18next';
 

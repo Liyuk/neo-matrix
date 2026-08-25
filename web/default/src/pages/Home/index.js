@@ -1,11 +1,29 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, Grid, Header } from 'semantic-ui-react';
+import { Badge, Button, Card, Grid, Header, Icon } from '../../ui/primitives';
 import { API, showError, showNotice, timestamp2string } from '../../helpers';
 import { StatusContext } from '../../context/Status';
 import { marked } from 'marked';
 import { UserContext } from '../../context/User';
 import { Link } from 'react-router-dom';
+
+const MODEL_LANES = [
+  { name: 'GPT', provider: 'OpenAI', icon: 'sparkles', tone: 'info', hint: '通用对话与工具调用' },
+  { name: 'Claude', provider: 'Anthropic', icon: 'message', tone: 'primary', hint: '长上下文与深度推理' },
+  { name: 'Grok', provider: 'xAI', icon: 'orbit', tone: 'neutral', hint: '实时信息与探索' },
+  { name: 'Gemini', provider: 'Google', icon: 'layers', tone: 'success', hint: '多模态与快速响应' },
+];
+
+const MODEL_CATALOG = [
+  { name: 'gpt-4o', family: 'GPT', description: '旗舰多模态模型', tone: 'info' },
+  { name: 'gpt-4o-mini', family: 'GPT', description: '低成本、快速响应', tone: 'info' },
+  { name: 'claude-3-5-sonnet', family: 'Claude', description: '长上下文与复杂推理', tone: 'primary' },
+  { name: 'gemini-1.5-pro', family: 'Gemini', description: '多模态长上下文', tone: 'success' },
+  { name: 'grok-3', family: 'Grok', description: '实时探索与分析', tone: 'neutral' },
+  { name: 'deepseek-reasoner', family: 'DeepSeek', description: '深度推理模型', tone: 'warning' },
+  { name: 'qwen-max', family: 'Qwen', description: '中文与通用任务', tone: 'warning' },
+  { name: 'doubao-pro', family: '豆包', description: '中文对话与创作', tone: 'neutral' },
+];
 
 const Home = () => {
   const { t } = useTranslation();
@@ -57,8 +75,75 @@ const Home = () => {
     displayHomePageContent().then();
   }, []);
 
+  const showEmbeddedHome = homePageContent.startsWith('https://');
+
   return (
-    <>
+    <div className='home-page'>
+      {!showEmbeddedHome ? (
+        <section className='home-hero'>
+          <div className='home-hero-copy'>
+            <Badge tone='neutral'>Neo Matrix · Unified model gateway</Badge>
+            <h1>一个入口，连接你的全部模型。</h1>
+            <p>
+              用统一的 API Token 访问 GPT、Claude、Grok 和 Gemini；让路由、成本、供给与结算都在一个控制台里清晰可见。
+            </p>
+            <div className='home-hero-actions'>
+              <Button as={Link} to={userState.user ? '/token' : '/login'} size='lg'>
+                {userState.user ? '进入模型工作台' : '开始使用'}
+              </Button>
+              <Button as={Link} to='/about' variant='secondary' size='lg'>了解 Neo Matrix</Button>
+            </div>
+          </div>
+          <div className='home-hero-orbit' aria-hidden='true'>
+            <div className='home-orbit-core'><Icon name='sparkles' /></div>
+            <span className='home-orbit-node home-orbit-node-a'>GPT</span>
+            <span className='home-orbit-node home-orbit-node-b'>Claude</span>
+            <span className='home-orbit-node home-orbit-node-c'>Grok</span>
+            <span className='home-orbit-node home-orbit-node-d'>Gemini</span>
+          </div>
+        </section>
+      ) : null}
+
+      {!showEmbeddedHome ? (
+        <section className='model-lanes' aria-label='模型接入概览'>
+          {MODEL_LANES.map((model) => (
+            <Card key={model.name} className={`model-lane model-lane-${model.tone}`}>
+              <Card.Content>
+                <div className='model-lane-icon'><Icon name={model.icon} /></div>
+                <div className='model-lane-copy'>
+                  <strong>{model.name}</strong>
+                  <span>{model.provider}</span>
+                  <small>{model.hint}</small>
+                </div>
+                <Badge tone={model.tone === 'primary' ? 'warning' : model.tone}>{model.tone === 'primary' ? '主力' : '已接入'}</Badge>
+              </Card.Content>
+            </Card>
+          ))}
+        </section>
+      ) : null}
+
+      {!showEmbeddedHome ? (
+        <section className='model-catalog-section' aria-labelledby='model-catalog-title'>
+          <div className='section-heading-row'>
+            <div>
+              <span className='section-kicker'>MODEL CATALOG</span>
+              <h2 id='model-catalog-title'>常用模型清单</h2>
+              <p>统一入口支持多家模型，使用同一个平台令牌即可切换。</p>
+            </div>
+            <Button as={Link} to='/token' variant='ghost' size='sm'>查看我的令牌 →</Button>
+          </div>
+          <div className='model-catalog-grid'>
+            {MODEL_CATALOG.map((model) => (
+              <div className='model-catalog-item' key={model.name}>
+                <div className={`model-catalog-dot model-catalog-dot-${model.tone}`} />
+                <div className='model-catalog-copy'><strong>{model.name}</strong><span>{model.family} · {model.description}</span></div>
+                <span className='model-catalog-arrow' aria-hidden='true'>↗</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {homePageContentLoaded && homePageContent === '' ? (
         <div className='dashboard-container'>
           <Card fluid className='chart-card'>
@@ -100,7 +185,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='info circle icon'></i>
+                          <Icon name='info' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.info.name')}
                           </span>
@@ -113,7 +198,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='code branch icon'></i>
+                          <Icon name='code branch' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.info.version')}
                           </span>
@@ -128,7 +213,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='github icon'></i>
+                          <Icon name='github' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.info.source')}
                           </span>
@@ -147,7 +232,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='clock outline icon'></i>
+                          <Icon name='clock outline' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.info.start_time')}
                           </span>
@@ -180,7 +265,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='envelope icon'></i>
+                          <Icon name='envelope' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.config.email_verify')}
                           </span>
@@ -204,7 +289,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='github icon'></i>
+                          <Icon name='github' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.config.github_oauth')}
                           </span>
@@ -228,7 +313,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='wechat icon'></i>
+                          <Icon name='wechat' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.config.wechat_login')}
                           </span>
@@ -252,7 +337,7 @@ const Home = () => {
                             gap: '0.5em',
                           }}
                         >
-                          <i className='shield alternate icon'></i>
+                          <Icon name='shield alternate' />
                           <span style={{ fontWeight: 'bold' }}>
                             {t('home.system_status.config.turnstile')}
                           </span>
@@ -292,7 +377,7 @@ const Home = () => {
           )}
         </>
       )}
-    </>
+    </div>
   );
 };
 

@@ -7,7 +7,7 @@ import {
   Popup,
   Pagination,
   Table,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link } from 'react-router-dom';
 import {
   API,

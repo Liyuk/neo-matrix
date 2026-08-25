@@ -7,7 +7,8 @@ import {
   Card,
   Statistic,
   Divider,
-} from 'semantic-ui-react';
+  Icon,
+} from '../../ui/primitives';
 import { API, showError, showInfo, showSuccess } from '../../helpers';
 import { renderQuota } from '../../helpers/render';
 import { useTranslation } from 'react-i18next';
@@ -109,7 +110,7 @@ const TopUp = () => {
                 >
                   <Card.Header>
                     <Header as='h3' style={{ color: '#2185d0', margin: '1em' }}>
-                      <i className='credit card icon'></i>
+                      <Icon name='credit card' />
                       {t('topup.get_code.title')}
                     </Header>
                   </Card.Header>
@@ -174,7 +175,7 @@ const TopUp = () => {
                 >
                   <Card.Header>
                     <Header as='h3' style={{ color: '#21ba45', margin: '1em' }}>
-                      <i className='ticket alternate icon'></i>
+                      <Icon name='ticket' />
                       {t('topup.redeem_code.title')}
                     </Header>
                   </Card.Header>

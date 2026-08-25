@@ -7,7 +7,7 @@ import {
   Message,
   Segment,
   Card,
-} from 'semantic-ui-react';
+} from '../../ui/primitives';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   API,

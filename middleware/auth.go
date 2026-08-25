@@ -81,10 +81,10 @@ func SupplierAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, model.RoleCommonUser)
 		id := c.GetInt("id")
-		if !model.IsSupplier(id) {
+		if _, err := model.EnsureSupplier(id); err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无权进行此操作，请先申请成为供给方",
+				"message": "无法初始化供给方账户：" + err.Error(),
 			})
 			c.Abort()
 			return

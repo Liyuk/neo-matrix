@@ -8,7 +8,7 @@ import {
   Header,
   Message,
   Modal,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link } from 'react-router-dom';
 import { API, showError, showSuccess, verifyJSON } from '../helpers';
 import { marked } from 'marked';

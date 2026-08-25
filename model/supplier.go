@@ -11,13 +11,13 @@ import (
 type Supplier struct {
 	Id              int     `json:"id"`
 	UserId          int     `json:"user_id" gorm:"uniqueIndex"`
-	Status          int     `json:"status" gorm:"default:1"` // 1=正常 2=冻结
+	Status          int     `json:"status" gorm:"default:1"`           // 1=正常 2=冻结
 	PlatformRatio   float64 `json:"platform_ratio" gorm:"default:0.2"` // 平台抽利润比例
 	WithdrawBalance int     `json:"withdraw_balance" gorm:"default:0"` // 可提现余额(quota)
 	SettlingBalance int     `json:"settling_balance" gorm:"default:0"` // 结算中余额(quota)
 	TotalIncome     int     `json:"total_income" gorm:"default:0"`     // 累计收益(quota)
 	// neo-matrix: 供给方信任与成本申报
-	TrustLevel     int    `json:"trust_level" gorm:"default:1"` // 供给方信任等级 1-5
+	TrustLevel     int    `json:"trust_level" gorm:"default:1"`      // 供给方信任等级 1-5
 	CostDeclStatus int    `json:"cost_decl_status" gorm:"default:0"` // 成本申报状态 0未申报/1待审/2核准/3驳回
 	CostDeclNote   string `json:"cost_decl_note" gorm:"type:text"`   // 申报说明/审批理由
 	CreatedTime    int64  `json:"created_time" gorm:"bigint"`
@@ -47,6 +47,34 @@ func GetSupplierById(id int) (*Supplier, error) {
 	return &supplier, nil
 }
 
+// EnsureSupplier returns the user's supplier account, creating an enabled account on first use.
+// Every authenticated user may provide an upstream key; admin approval is not required.
+func EnsureSupplier(userId int) (*Supplier, error) {
+	if existing, err := GetSupplierByUserId(userId); err == nil && existing != nil {
+		if existing.Status != SupplierStatusEnabled {
+			existing.Status = SupplierStatusEnabled
+			existing.UpdatedTime = time.Now().Unix()
+			if err := DB.Save(existing).Error; err != nil {
+				return nil, err
+			}
+		}
+		return existing, nil
+	}
+	now := time.Now().Unix()
+	supplier := &Supplier{
+		UserId:        userId,
+		Status:        SupplierStatusEnabled,
+		PlatformRatio: 0.2,
+		TrustLevel:    1,
+		CreatedTime:   now,
+		UpdatedTime:   now,
+	}
+	if err := DB.Create(supplier).Error; err != nil {
+		return nil, err
+	}
+	return supplier, nil
+}
+
 func IsSupplier(userId int) bool {
 	supplier, err := GetSupplierByUserId(userId)
 	return err == nil && supplier != nil && supplier.Status == SupplierStatusEnabled
@@ -59,24 +87,10 @@ func GetAllSuppliers() ([]*Supplier, error) {
 	return suppliers, err
 }
 
-// ApplySupplier 申请成为供给方。已存在则直接返回，幂等。
-// 新申请默认待审核（Status=Frozen），管理员批准后才可提交 Key/参与分成，
-// 防止任意注册用户滥用供给方能力（SSRF/套利）。
+// ApplySupplier is kept as a backwards-compatible idempotent endpoint.
+// Supplier access is enabled automatically for every authenticated user.
 func ApplySupplier(userId int) (*Supplier, error) {
-	if existing, err := GetSupplierByUserId(userId); err == nil && existing != nil {
-		return existing, nil
-	}
-	now := time.Now().Unix()
-	supplier := Supplier{
-		UserId:      userId,
-		Status:      SupplierStatusFrozen, // 待管理员审核
-		CreatedTime: now,
-		UpdatedTime: now,
-	}
-	if err := DB.Create(&supplier).Error; err != nil {
-		return nil, err
-	}
-	return &supplier, nil
+	return EnsureSupplier(userId)
 }
 
 // UpdateSupplierBalance 原子增减供给方余额（type: withdraw=可提现, settling=结算中）。
@@ -147,11 +161,11 @@ type Settlement struct {
 	PeriodEnd     int64 `json:"period_end" gorm:"bigint;uniqueIndex:idx_settlement_period_channel"`
 	SupplierId    int   `json:"supplier_id" gorm:"index"`
 	ChannelId     int   `json:"channel_id" gorm:"uniqueIndex:idx_settlement_period_channel"`
-	TotalQuota    int   `json:"total_quota"`   // 周期内零售额合计(消费者实付)
-	CostQuota     int   `json:"cost_quota"`    // 周期内成本合计(付给上游)
-	RevenueQuota  int   `json:"revenue_quota"` // 供给方分成
-	PlatformQuota int   `json:"platform_quota"`// 平台留存
-	Status        int   `json:"status" gorm:"default:0"` // 0待结算 1已确认 2已入账 3对账异常
+	TotalQuota    int   `json:"total_quota"`                            // 周期内零售额合计(消费者实付)
+	CostQuota     int   `json:"cost_quota"`                             // 周期内成本合计(付给上游)
+	RevenueQuota  int   `json:"revenue_quota"`                          // 供给方分成
+	PlatformQuota int   `json:"platform_quota"`                         // 平台留存
+	Status        int   `json:"status" gorm:"default:0"`                // 0待结算 1已确认 2已入账 3对账异常
 	UsedQuotaEnd  int64 `json:"used_quota_end" gorm:"bigint;default:0"` // 本周期末 channel.used_quota 快照，用于下周期增量对账
 	CreatedTime   int64 `json:"created_time" gorm:"bigint"`
 }

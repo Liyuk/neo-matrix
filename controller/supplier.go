@@ -92,7 +92,7 @@ func validateModelCostRatio(raw string, maxCostRatio float64) (string, error) {
 // SupplierApply 申请成为供给方（幂等）
 func SupplierApply(c *gin.Context) {
 	userId := c.GetInt(ctxkey.Id)
-	supplier, err := model.ApplySupplier(userId)
+	supplier, err := model.EnsureSupplier(userId)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -220,8 +220,8 @@ func SupplierAddChannel(c *gin.Context) {
 	channel.IsShared = 1
 	channel.SettleEnabled = 1
 	channel.Status = model.ChannelStatusEnabled
-	channel.Group = "default"                  // 供给方渠道服务默认分组
-	channel.TrustLevel = 1                     // 新渠道信任阶梯起步
+	channel.Group = "default"                      // 供给方渠道服务默认分组
+	channel.TrustLevel = 1                         // 新渠道信任阶梯起步
 	channel.CostDeclStatus = model.CostDeclPending // 成本申报待审（不可由请求体伪造为已核准）
 	channel.CreatedTime = helper.GetTimestamp()
 	if err := channel.Insert(); err != nil {

@@ -30,9 +30,9 @@ export function getSystemName() {
 
 export function getLogo() {
   // 空串也会导致 <img src=""> 显示异常，统一兜底到内置 logo。
-  // demo 模式（GitHub Pages 子路径）下用相对路径，避免 /logo.png 绝对路径 404。
+  // demo 模式（GitHub Pages 子路径）下用相对路径，避免绝对路径 404。
   let logo = localStorage.getItem('logo');
-  if (!logo) return process.env.REACT_APP_DEMO === 'true' ? 'logo.png' : '/logo.png';
+  if (!logo) return process.env.REACT_APP_DEMO === 'true' ? 'logo.svg' : '/logo.svg';
   return logo;
 }
 

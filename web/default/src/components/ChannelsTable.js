@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Button, Dropdown, Form, Input, Label, Message, Pagination, Popup, Table,} from 'semantic-ui-react';
+import {Button, Dropdown, Form, Input, Label, Message, Pagination, Popup, Table,} from '../ui/primitives';
 import {Link} from 'react-router-dom';
 import {
   API,
@@ -89,23 +89,18 @@ const ChannelsTable = () => {
   const [showDetail, setShowDetail] = useState(isShowDetail());
 
   const processChannelData = (channel) => {
-    if (channel.models === '') {
-      channel.models = [];
-      channel.test_model = '';
-    } else {
-      channel.models = channel.models.split(',');
-      if (channel.models.length > 0) {
-        channel.test_model = channel.models[0];
-      }
-      channel.model_options = channel.models.map((model) => {
-        return {
-          key: model,
-          text: model,
-          value: model,
-        };
-      });
-      console.log('channel', channel);
-    }
+    const models = Array.isArray(channel.models)
+      ? channel.models
+      : channel.models
+        ? String(channel.models).split(',')
+        : [];
+    channel.models = models;
+    channel.test_model = models[0] || '';
+    channel.model_options = models.map((model) => ({
+      key: model,
+      text: model,
+      value: model,
+    }));
     return channel;
   };
 

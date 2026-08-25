@@ -8,7 +8,7 @@ import {
   Pagination,
   Popup,
   Table,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link } from 'react-router-dom';
 import {
   API,
@@ -424,7 +424,7 @@ const TokensTable = () => {
                           {t('token.buttons.copy')}
                         </Button>
                         <Dropdown
-                          className='button icon'
+                          className='nm-dropdown-icon'
                           floating
                           options={copyOptionsWithHandlers}
                           trigger={<></>}
@@ -439,7 +439,7 @@ const TokensTable = () => {
                           {t('token.buttons.chat')}
                         </Button>
                         <Dropdown
-                          className='button icon'
+                          className='nm-dropdown-icon'
                           floating
                           options={openLinkOptionsWithHandlers}
                           trigger={<></>}

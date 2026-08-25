@@ -1,4 +1,4 @@
-import { Label, Message } from 'semantic-ui-react';
+import { Label, Message } from '../ui/primitives';
 import { getChannelOption } from './helper';
 import React from 'react';
 
@@ -25,13 +25,14 @@ export function renderGroup(group) {
         rowGap: '6px',
       }}
     >
-      {groups.map((group) => {
+      {groups.map((group, index) => {
+        const key = `${group}-${index}`;
         if (group === 'vip' || group === 'pro') {
-          return <Label color='yellow'>{group}</Label>;
+          return <Label key={key} color='yellow'>{group}</Label>;
         } else if (group === 'svip' || group === 'premium') {
-          return <Label color='red'>{group}</Label>;
+          return <Label key={key} color='red'>{group}</Label>;
         }
-        return <Label>{group}</Label>;
+        return <Label key={key}>{group}</Label>;
       })}
     </div>
   );

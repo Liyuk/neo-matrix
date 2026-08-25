@@ -1,5 +1,5 @@
 import React from 'react';
-import { Message } from 'semantic-ui-react';
+import { Message } from '../../ui/primitives';
 
 const NotFound = () => (
   <>

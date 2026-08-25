@@ -10,9 +10,10 @@ import {
   Modal,
   Segment,
   Table,
-} from 'semantic-ui-react';
+} from '../../ui/primitives';
 import { API, showError, showSuccess } from '../../helpers';
 import { useTranslation } from 'react-i18next';
+import BrandMark from '../../ui/BrandMark';
 
 const Settlement = () => {
   const { t } = useTranslation();
@@ -98,9 +99,17 @@ const Settlement = () => {
 
   return (
     <Container>
-      <Header as='h2' style={{ display: 'flex' }}>
-        <Icon name='balance scale' style={{ fontSize: '0.85em', verticalAlign: 'middle' }} /> 结算与提现管理
-      </Header>
+      <div className='supplier-heading settlement-heading'>
+        <BrandMark size='lg' label='Neo Matrix 结算与提现管理' />
+        <div>
+          <Header as='h2'>结算与提现管理</Header>
+          <p>核对渠道账单、确认供给方收入，并处理提现申请。</p>
+        </div>
+        <div className='supplier-heading-actions'>
+          <span className='settlement-flow-step'>待核验</span>
+          <span>确认后进入可提现余额</span>
+        </div>
+      </div>
 
       <Segment>
         <Button primary onClick={() => setShowRun(true)}>

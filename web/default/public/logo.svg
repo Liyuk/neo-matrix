@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Neo Matrix</title>
+  <desc id="desc">A warm terracotta and graphite network monogram.</desc>
+  <rect width="512" height="512" rx="116" fill="#f7f5f0"/>
+  <g fill="none" stroke="#d97757" stroke-linecap="round" opacity=".22">
+    <path d="M84 112h344M84 188h344M84 264h344M84 340h344M84 416h344" stroke-width="5"/>
+    <path d="M96 84v344M176 84v344M256 84v344M336 84v344M416 84v344" stroke-width="5"/>
+  </g>
+  <g fill="#f7f5f0" stroke="#d97757" stroke-width="12">
+    <circle cx="102" cy="116" r="28"/>
+    <circle cx="410" cy="116" r="28"/>
+    <circle cx="256" cy="416" r="28"/>
+  </g>
+  <g fill="none" stroke="#292722" stroke-width="52" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M164 350V164L348 350V164"/>
+  </g>
+  <path d="M164 164L348 350" fill="none" stroke="#d97757" stroke-width="52" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="32" fill="#f7f5f0" stroke="#d97757" stroke-width="12"/>
+  <circle cx="256" cy="256" r="11" fill="#d97757"/>
+</svg>

@@ -8,7 +8,7 @@ import {
   Message,
   Card,
   Divider,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { API, getLogo, showError, showInfo, showSuccess } from '../helpers';

@@ -1,11 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
-import { Container } from 'semantic-ui-react';
 import App from './App';
-import Header from './components/Header';
-import Footer from './components/Footer';
-import 'semantic-ui-css/semantic.min.css';
+import AppShell from './components/AppShell';
 import './index.css';
 import { UserProvider } from './context/User';
 import { ToastContainer } from 'react-toastify';
@@ -17,17 +14,40 @@ const isDemo = process.env.REACT_APP_DEMO === 'true';
 const Router = isDemo ? HashRouter : BrowserRouter;
 
 if (isDemo) {
-  // 纯静态 demo：预置 root 登录态，打开即已登录管理员。
-  const demoUser = {
-    id: 1,
-    username: 'root',
-    display_name: '演示管理员',
-    role: 100,
-    status: 1,
-    token: 'demo-token',
-    email: 'root@neo-matrix.dev',
+  // 纯静态 demo：默认 root；可用 ?demo_user=consumer|supplier 预览不同角色。
+  const demoUsers = {
+    admin: {
+      id: 1,
+      username: 'root',
+      display_name: '演示管理员',
+      role: 100,
+      status: 1,
+      token: 'demo-token',
+      email: 'root@neo-matrix.dev',
+    },
+    supplier: {
+      id: 3,
+      username: 'supplier_ali',
+      display_name: '阿里云供给方',
+      role: 1,
+      status: 1,
+      token: 'demo-supplier-token',
+      email: 'ali@neo-matrix.dev',
+      group: 'supplier',
+    },
+    consumer: {
+      id: 4,
+      username: 'consumer',
+      display_name: '演示消费者',
+      role: 1,
+      status: 1,
+      token: 'demo-consumer-token',
+      email: 'consumer@neo-matrix.dev',
+    },
   };
-  if (!localStorage.getItem('user')) {
+  const requestedPersona = new URLSearchParams(window.location.search).get('demo_user');
+  const demoUser = demoUsers[requestedPersona] || demoUsers.admin;
+  if (requestedPersona || isDemo) {
     localStorage.setItem('user', JSON.stringify(demoUser));
   }
   // 预置 status，避免 getLogo/getSystemName 在 /api/status 返回前读到绝对路径兜底
@@ -37,7 +57,7 @@ if (isDemo) {
       JSON.stringify({
         version: 'v0.0.0',
         system_name: 'Neo Matrix',
-        logo: 'logo.png',
+        logo: 'logo.svg',
         footer_html: 'Neo Matrix 纯静态演示 · 数据为本地 mock',
         quota_per_unit: '500000',
         display_in_currency: true,
@@ -46,10 +66,10 @@ if (isDemo) {
       })
     );
   }
-  // 预置 status 派生的 localStorage 键，避免 Header 首次渲染读到绝对路径兜底（/logo.png）
+  // 预置 status 派生的 localStorage 键，避免 Shell 首次渲染读到绝对路径兜底
   const seed = {
     system_name: 'Neo Matrix',
-    logo: 'logo.png',
+    logo: 'logo.svg',
     footer_html: 'Neo Matrix 纯静态演示 · 数据为本地 mock',
     quota_per_unit: '500000',
     display_in_currency: 'true',
@@ -66,12 +86,10 @@ root.render(
     <StatusProvider>
       <UserProvider>
         <Router>
-          <Header />
-          <Container className={'main-content'}>
+          <AppShell>
             <App />
-          </Container>
+          </AppShell>
           <ToastContainer />
-          <Footer />
         </Router>
       </UserProvider>
     </StatusProvider>

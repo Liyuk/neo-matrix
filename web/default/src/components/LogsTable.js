@@ -9,7 +9,7 @@ import {
   Select,
   Table,
   Popup,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import {
   API,
   copy,
@@ -310,7 +310,8 @@ const LogsTable = () => {
 
   return (
     <>
-      <Header as='h3'>
+      <div className='log-page-heading'>
+        <Header as='h3'>
         {t('log.usage_details')}（{t('log.total_quota')}：
         {showStat && renderQuota(stat.quota, t)}
         {!showStat && (
@@ -322,8 +323,10 @@ const LogsTable = () => {
           </span>
         )}
         ）
-      </Header>
-      <Form>
+        </Header>
+        <span className='log-page-heading-meta'>可按时间、模型、渠道和令牌筛选</span>
+      </div>
+      <Form className='log-filter-form'>
         <Form.Group>
           <Form.Input
             fluid
@@ -408,7 +411,7 @@ const LogsTable = () => {
           onChange={(e, { value }) => setSearchKeyword(value)}
         />
       </Form>
-      <Table basic={'very'} compact size='small'>
+      <Table className='log-table' basic={'very'} compact size='small'>
         <Table.Header>
           <Table.Row>
             <Table.HeaderCell

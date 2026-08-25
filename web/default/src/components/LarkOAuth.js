@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { Dimmer, Loader, Segment } from 'semantic-ui-react';
+import { Dimmer, Loader, Segment } from '../ui/primitives';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { API, showError, showSuccess } from '../helpers';
 import { UserContext } from '../context/User';

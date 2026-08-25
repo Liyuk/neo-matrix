@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card } from 'semantic-ui-react';
+import { Card } from '../../ui/primitives';
 import { API, showError } from '../../helpers';
 import { marked } from 'marked';
 

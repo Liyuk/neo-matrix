@@ -8,7 +8,7 @@ import {
   Image,
   Message,
   Modal,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   API,

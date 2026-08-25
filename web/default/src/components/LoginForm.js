@@ -10,7 +10,7 @@ import {
   Modal,
   Segment,
   Card,
-} from 'semantic-ui-react';
+} from '../ui/primitives';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { UserContext } from '../context/User';
