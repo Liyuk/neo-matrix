@@ -16,3 +16,10 @@ temp
 node_modules/
 .playwright-cli/
 output/
+
+# web/build 是 //go:embed 的根目录。真实主题产物继续忽略，只跟踪占位文件，
+# 这样未构建前端时 go test / go vet 也能编译。发布构建会在 go build 前写入
+# web/build/<theme>，那些文件仍会被嵌入，且不会被 git 跟踪。
+!/web/build/
+/web/build/*
+!/web/build/placeholder

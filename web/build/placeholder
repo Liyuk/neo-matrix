@@ -1,0 +1,8 @@
+neo-matrix-web-build-placeholder
+
+This file is committed so //go:embed web/build/* matches when the SPA has
+not been built. go test and go vet can compile without a frontend build.
+
+It is not a theme. Release, Docker, and local release builds write the real
+frontend to web/build/<theme> before go build, and those files are embedded
+by the same pattern. Do not delete this file.
