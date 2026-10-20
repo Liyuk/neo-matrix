@@ -29,6 +29,12 @@ import (
 	"github.com/neo-matrix/neo-matrix/router"
 )
 
+// buildFS 嵌入前端静态资源。web/build 的真实产物不入库；仓库只提交
+// web/build/placeholder，让未执行前端构建时 //go:embed web/build/* 仍能匹配，
+// 从而 go test / go vet 可以编译。发布与 Docker 会在 go build 之前把主题写到
+// web/build/<theme>，同一条规则会把真实前端一并打进二进制。路由按主题目录读取，
+// 占位文件不会被当作页面提供。
+//
 //go:embed web/build/*
 var buildFS embed.FS
 
